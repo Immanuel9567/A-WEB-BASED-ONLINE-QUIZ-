@@ -1037,6 +1037,17 @@ route('POST', '/api/classes/join', async ({ user, body, res }) => {
   }
   c.studentIds = c.studentIds || [];
   c.studentIds.push(user.id);
+  // welcome alerts: quizzes already published in this class, so a late joiner misses nothing
+  const teacher = byId(db.users, c.teacherId);
+  for (const q of db.quizzes) {
+    if (q.published && (q.classes || []).includes(c.id)) {
+      db.notifications.push({
+        id: uid('n'), userId: user.id, quizId: q.id, quizTitle: q.title,
+        type: 'published', teacherName: teacher ? teacher.name : 'Your teacher',
+        createdAt: now(), read: false
+      });
+    }
+  }
   saveDb();
   send(res, 200, { class: classPublic(c) });
 });
@@ -1217,6 +1228,8 @@ async function cloudFetchData() { // -> decrypted db object | null (nothing in c
   const j = await g.json();
   const payload = JSON.parse(Buffer.from(j.content, 'base64').toString('utf8'));
   if (!payload || payload.app !== 'OQAS' || payload.enc !== 'aes-256-gcm') return null;
+  // remember when the cloud copy was last saved so the status card is accurate on boot
+  if (payload.savedAt && !cloudState.lastSavedAt) cloudState.lastSavedAt = payload.savedAt;
   return cloudDecrypt(payload, cloudCfg.passphrase);
 }
 
