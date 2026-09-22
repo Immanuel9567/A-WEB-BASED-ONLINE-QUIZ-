@@ -1,0 +1,26 @@
+{
+  "name": "oqas-online-quiz-assessment-system",
+  "version": "1.0.0",
+  "description": "Web-based online quiz and automated assessment system with real-time result processing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Immanuel9567/A-WEB-BASED-ONLINE-QUIZ-.git"
+  },
+  "keywords": [
+    "quiz",
+    "assessment",
+    "e-learning",
+    "education",
+    "real-time",
+    "nodejs"
+  ],
+  "author": "Immanuel9567",
+  "license": "MIT"
+}

@@ -174,3 +174,32 @@ Deliberate simplifications, and how each would be hardened in production:
 
 **Run note:** the server binds `0.0.0.0` on port 3000 (`PORT` env overrides it).
 All state lives in `data/db.json` — delete the file to reset to a fresh seed.
+
+---
+
+## 8. Deploying it live (free hosting)
+
+The app is a single zero-dependency Node.js process, so it deploys anywhere Node runs.
+
+### One click on Render (recommended, free)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Immanuel9567/A-WEB-BASED-ONLINE-QUIZ-)
+
+Manual steps (same result):
+
+1. Create a free account at [render.com](https://render.com) — easiest is **Sign in with GitHub**.
+2. Dashboard → **New +** → **Web Service** → connect the repo **A-WEB-BASED-ONLINE-QUIZ-**.
+3. Render auto-detects Node from `package.json`:
+   * Build command: `npm install`
+   * Start command: `npm start`
+4. Choose the **Free** plan → **Deploy**. In ~2 minutes your quiz system is live at
+   `https://<your-service-name>.onrender.com` — share that link with your client.
+
+> **Free-plan notes:** the service sleeps after ~15 minutes of inactivity, so the first
+> visit after a pause takes ~30–60 seconds to wake up. The filesystem is also reset on each
+> deploy/restart — the database **re-seeds itself with the demo data automatically**, so the
+> site keeps working (created accounts/quizzes since the last deploy would be lost).
+> For persistent data, attach a Render disk mounted at `data/` or move to PostgreSQL (§7).
+>
+> **Other hosts that work the same way:** Koyeb, Railway (paid), Fly.io, or any VPS —
+> `git clone` + `npm start` is all it takes.

@@ -1,0 +1,9 @@
+# Render deployment blueprint — one click via the "Deploy to Render" button in README.md
+# (or render.com → New → Blueprint → select this repository)
+services:
+  - type: web
+    name: oqas-quiz-system
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
