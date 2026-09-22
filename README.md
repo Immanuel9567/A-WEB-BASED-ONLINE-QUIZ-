@@ -326,12 +326,25 @@ Manual steps (same result):
    * Start command: `npm start`
 4. Choose the **Free** plan → **Deploy**. In ~2 minutes your quiz system is live at
    `https://<your-service-name>.onrender.com` — share that link with your client.
+5. **Make the data permanent (do this before real use).** On the free plan the filesystem
+   resets on every deploy/restart, so cloud save must be configured through environment
+   variables (service → **Environment**):
+
+   | Variable | Value |
+   |---|---|
+   | `OQAS_CLOUD_TOKEN` | A GitHub personal access token with **Contents: Read and write** permission for this repo |
+   | `OQAS_CLOUD_PASSPHRASE` | Your cloud passphrase (6+ characters) — use the same one every time so old backups stay readable |
+   | `OQAS_CLOUD_BRANCH` | *(optional)* backup branch, default `cloud-data`. Give a live deployment its own branch (e.g. `cloud-data-live`) so test data never mixes with real data |
+
+   With these set, the server restores the latest backup on every start and saves back
+   after every change — accounts, quizzes and results survive restarts permanently.
+   (Cloud save can also be connected in-app from the teacher dashboard, but a file-based
+   connection does not survive a Render restart — the environment variables do.)
 
 > **Free-plan notes:** the service sleeps after ~15 minutes of inactivity, so the first
 > visit after a pause takes ~30–60 seconds to wake up. The filesystem is also reset on each
-> deploy/restart — the database resets to empty. Connect **cloud save** (below) so your
-> data is restored automatically on every restart.
-> For persistent data, attach a Render disk mounted at `data/` or move to PostgreSQL (§7).
+> deploy/restart — with the environment variables above (or a Render disk mounted at
+> `data/`), your data is restored automatically either way.
 >
 > **Other hosts that work the same way:** Koyeb, Railway (paid), Fly.io, or any VPS —
 > `git clone` + `npm start` is all it takes.

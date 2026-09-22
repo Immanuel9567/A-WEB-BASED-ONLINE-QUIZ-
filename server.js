@@ -1128,8 +1128,13 @@ function loadCloudCfg() {
   for (const p of cloudConfigPaths()) {
     try {
       const c = JSON.parse(fs.readFileSync(p, 'utf8'));
-      if (c && c.token && c.passphrase) { cloudCfg = c; return; }
+      if (c && c.token && c.passphrase) { cloudCfg = c; cloudCfg.via = 'file'; return; }
     } catch (e) { /* keep looking */ }
+  }
+  // environment fallback — for hosts (Render, Railway, Fly…) whose disk resets on restart.
+  // Set OQAS_CLOUD_TOKEN and OQAS_CLOUD_PASSPHRASE to keep cloud save connected permanently.
+  if (process.env.OQAS_CLOUD_TOKEN && process.env.OQAS_CLOUD_PASSPHRASE) {
+    cloudCfg = { token: process.env.OQAS_CLOUD_TOKEN, passphrase: process.env.OQAS_CLOUD_PASSPHRASE, via: 'env' };
   }
 }
 loadCloudCfg();
@@ -1236,7 +1241,7 @@ async function cloudFetchData() { // -> decrypted db object | null (nothing in c
 route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   send(res, 200, {
-    connected: !!cloudCfg, repo: CLOUD_REPO, branch: CLOUD_BRANCH,
+    connected: !!cloudCfg, via: cloudCfg ? (cloudCfg.via || 'file') : null, repo: CLOUD_REPO, branch: CLOUD_BRANCH,
     lastSavedAt: cloudState.lastSavedAt, lastError: cloudState.lastError,
     saving: cloudState.saving, autoSave: true,
     users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length
@@ -1389,7 +1394,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('==================================================');
   console.log('  API + UI  ->  http://localhost:' + PORT);
   console.log('  Accounts  ->  none yet - register the first teacher at /login.html');
-  console.log('  Cloud     ->  ' + (cloudCfg ? 'connected (' + CLOUD_BRANCH + ' branch)' : 'not connected'));
+  console.log('  Cloud     ->  ' + (cloudCfg ? 'connected (' + CLOUD_BRANCH + ' branch, via ' + (cloudCfg.via || 'file') + ')' : 'not connected'));
   console.log('==================================================');
 });
 }
