@@ -1,5 +1,5 @@
 /* ============================================================================
-   OQAS — ONLINE QUIZ & AUTOMATED ASSESSMENT SYSTEM (Prototype)
+   ClassMark — Online Quiz & Assessment System
    ----------------------------------------------------------------------------
    A web-based quiz delivery platform with:
      • Role-based access (teacher / student)
@@ -884,7 +884,7 @@ route('POST', '/api/admin/import', async ({ user, req, body, res }) => {
   const b = (body && body.data && body.data.users) ? body.data : body;
   if (!b || !Array.isArray(b.users) || !Array.isArray(b.quizzes) ||
       typeof b.questions !== 'object' || !Array.isArray(b.attempts)) {
-    return send(res, 400, { error: 'Invalid backup file — expected an OQAS database export (JSON).' });
+    return send(res, 400, { error: 'Invalid backup file — expected a ClassMark database export (JSON).' });
   }
   applyDbData(b);
   // keep the importing teacher signed in after the swap
@@ -1176,7 +1176,7 @@ async function cloudSaveNow() {
     const payload = cloudEncrypt(Object.assign({}, db, { sessions: {} }), cloudCfg.passphrase);
     const content = Buffer.from(JSON.stringify(payload, null, 1)).toString('base64');
     const g = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
-    const body = { message: 'OQAS cloud save ' + new Date().toISOString(), branch: CLOUD_BRANCH, content };
+    const body = { message: 'ClassMark cloud save ' + new Date().toISOString(), branch: CLOUD_BRANCH, content };
     if (g.status === 200) body.sha = (await g.json()).sha; // update existing file
     else if (g.status !== 404) throw new Error('GitHub read failed (HTTP ' + g.status + ')');
     const p = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE, {
@@ -1267,7 +1267,7 @@ route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
   if (!data) return send(res, 404, { error: 'No cloud backup found yet — save once first.' });
   if (!Array.isArray(data.users) || !Array.isArray(data.quizzes) ||
       typeof data.questions !== 'object' || !Array.isArray(data.attempts)) {
-    return send(res, 400, { error: 'The cloud backup is not a valid OQAS database.' });
+    return send(res, 400, { error: 'The cloud backup is not a valid ClassMark database.' });
   }
   const keepSessions = db.sessions; // nobody gets signed out by a restore
   cloudSuppress++;
@@ -1317,7 +1317,7 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
   }
 }
 
-route('GET', '/api/health', async ({ res }) => send(res, 200, { ok: true, name: 'OQAS API', time: now() }));
+route('GET', '/api/health', async ({ res }) => send(res, 200, { ok: true, name: 'ClassMark API', time: now() }));
 
 /* --------------------------------------------------------------- server     */
 loadDb();
@@ -1374,7 +1374,7 @@ process.on('SIGINT', flushCloudAndExit);
 function startListen() {
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==================================================');
-  console.log('  OQAS - Online Quiz & Automated Assessment System');
+  console.log('  ClassMark - Online Quiz & Assessment System');
   console.log('==================================================');
   console.log('  API + UI  ->  http://localhost:' + PORT);
   console.log('  Accounts  ->  none yet - register the first teacher at /login.html');

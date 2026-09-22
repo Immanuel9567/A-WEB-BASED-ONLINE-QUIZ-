@@ -1,5 +1,5 @@
 /* ============================================================================
-   OQAS — shared client helpers
+   ClassMark — shared client helpers
    Icon pack: uniform inline SVG set (Feather-style, stroke-based, MIT).
    No emojis anywhere — every glyph below comes from this one pack.
    ============================================================================ */
@@ -243,13 +243,13 @@
     el.innerHTML =
       '<header class="m-top">' +
       '<button class="iconbtn" id="sbMenu" title="Menu" aria-label="Open menu">' + icon('menu', 21) + '</button>' +
-      '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
+      '<a class="brand" href="' + home + '" title="ClassMark home">' + LOGO + '<span>ClassMark</span></a>' +
       '<div class="bellwrap" style="margin-left:auto"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
       icon('bell', 20) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
       '</header>' +
       '<aside class="sidebar">' +
       '<div class="sb-head">' +
-      '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
+      '<a class="brand" href="' + home + '" title="ClassMark home">' + LOGO + '<span>ClassMark</span></a>' +
       '<div class="bellwrap"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
       icon('bell', 20) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
       '<button class="iconbtn sb-toggle" id="sbToggle" title="Collapse menu" aria-label="Collapse menu">' + icon('chevronsLeft', 18) + '</button>' +

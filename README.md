@@ -1,4 +1,4 @@
-# OQAS — Online Quiz & Automated Assessment System
+# ClassMark — Online Quiz & Assessment System
 
 **A web-based online quiz and automated assessment system with real-time result processing.**
 This repository contains a fully working prototype: teacher-side quiz authoring, student-side
@@ -70,7 +70,7 @@ its join code — then create quizzes and let students register and join with th
   scores, outcomes, timing and integrity flags, and jump straight to each result review.
 
 **Classes with join codes**
-- Teachers can run **several classes** — register with your first class name (OQAS generates
+- Teachers can run **several classes** — register with your first class name (ClassMark generates
   a **unique join code** for it) and add more from the dashboard at any time.
 - Students **join classes with a code** (as many as they like) from their dashboard, and
   their joined classes appear in the sidebar for one-click navigation.

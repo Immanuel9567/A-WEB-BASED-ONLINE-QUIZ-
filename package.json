@@ -1,5 +1,5 @@
 {
-  "name": "oqas-online-quiz-assessment-system",
+  "name": "classmark",
   "version": "1.0.0",
   "description": "Web-based online quiz and automated assessment system with real-time result processing",
   "main": "server.js",
