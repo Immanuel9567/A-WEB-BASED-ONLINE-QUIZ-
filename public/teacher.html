@@ -20,7 +20,6 @@
 
   <section class="statgrid" id="stats"></section>
 
-__X__
   <section class="card tight" id="classCard"><p class="small muted skeleton">Loading…</p></section>
 
   <h2 class="sec">My quizzes</h2>
@@ -33,24 +32,7 @@ __X__
       <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
-    <h2 class="sec">Data, cloud &amp; backup</h2>
-  <section class="card tight">
-    <div id="cloudBox"><p class="small muted skeleton">Loading cloud status…</p></div>
-    <div class="row" style="align-items:flex-start;border-top:1px solid #e8eaed;padding-top:14px;margin-top:14px">
-      <div style="flex:1;min-width:260px">
-        <b style="font-size:15px">Local backup file</b>
-        <p class="small muted" style="margin:4px 0 0">
-          Download the whole database as a JSON file, or restore one — handy for moving to another server.
-        </p>
-      </div>
-      <div class="row">
-        <button class="btn" id="dlBackup"></button>
-        <button class="btn" id="restoreBtn"></button>
-        <input type="file" id="restoreFile" accept="application/json,.json" hidden>
-      </div>
-    </div>
-  </section>
-</main></main>
+</main>
 
 <script src="js/app.js"></script>
 <script>
@@ -94,18 +76,24 @@ __X__
   function renderTable() {
     if (!quizzes.length) {
       tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-        'No quizzes yet — use Create quiz in the sidebar.</div></td></tr>';
+        'No quizzes yet — use Create quiz in the menu.</div></td></tr>';
     } else {
       tb.innerHTML = quizzes.map(row).join('');
       wire();
     }
   }
-  await refresh();
+  try { await refresh(); }
+  catch (e) {
+    document.getElementById('rows').innerHTML =
+      '<tr><td colspan="8" class="muted">Could not load your quizzes — ' + esc(e.message) + '</td></tr>';
+  }
 
   function row(q) {
     var qCell = '<b>' + esc(q.title) + '</b><br><span class="small muted">' + esc(q.subject) + '</span>';
     if (q.draftCount > 0) qCell += ' <span class="chip">' + q.draftCount + ' draft' + (q.draftCount > 1 ? 's' : '') + '</span>';
-    if (q.classes && q.classes.length) qCell += ' <span class="chip">My class only</span>';
+    (q.classInfo || []).forEach(function (c) {
+      qCell += ' <span class="chip classchip">' + (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>';
+    });
     return '<tr>' +
       '<td>' + qCell + '</td>' +
       '<td>' + (q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>') + '</td>' +
@@ -156,45 +144,6 @@ __X__
     });
   }
 
-  /* ---- data backup & restore ---- */
-  var dlB = document.getElementById('dlBackup');
-  dlB.innerHTML = icon('download', 15) + ' Download backup';
-  document.getElementById('restoreBtn').innerHTML = icon('upload', 15) + ' Restore backup';
-  dlB.onclick = async function () {
-    try {
-      var data = await GET('/api/admin/export');
-      var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      var aEl = document.createElement('a');
-      aEl.href = URL.createObjectURL(blob);
-      aEl.download = 'oqas-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-      document.body.appendChild(aEl); aEl.click(); aEl.remove();
-      toast('Backup downloaded — keep it somewhere safe');
-    } catch (err) { toast(err.message, 'bad'); }
-  };
-  document.getElementById('restoreBtn').onclick = function () { document.getElementById('restoreFile').click(); };
-  document.getElementById('restoreFile').onchange = function () {
-    var f = this.files && this.files[0];
-    if (!f) return;
-    var reader = new FileReader();
-    reader.onload = async function () {
-      var ok = await confirmModal({
-        title: 'Restore database from backup?',
-        body: 'This replaces ALL current data — users, quizzes, questions and results — with the contents of the backup file. Other users will be signed out.',
-        okText: 'Restore database', danger: true
-      });
-      if (!ok) return;
-      try {
-        var parsed = JSON.parse(reader.result);
-        var r = await POST('/api/admin/import', parsed);
-        toast('Database restored — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
-        await refresh();
-        loadClasses();
-      } catch (err) { toast(err.message, 'bad'); }
-    };
-    reader.readAsText(f);
-    this.value = '';
-  };
-
   /* ---- my classes (multi) ---- */
   var classCard = document.getElementById('classCard');
   async function loadClasses() {
@@ -205,7 +154,7 @@ __X__
         return '<div class="row clsrow" style="margin-bottom:10px">' +
           (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span>' : '') +
           '<div style="flex:1;min-width:160px"><b>' + esc(c.name) + '</b>' +
-          '<div class="hintline">Code <b class="mono">' + esc(c.code) + '</b> &middot; ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + '</div></div>' +
+          '<div class="hintline">Code <b class="mono codebig">' + esc(c.code) + '</b> &middot; ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + '</div></div>' +
           '<button class="btn sm" data-copy="' + esc(c.code) + '">' + icon('clipboardCheck', 13) + ' Copy code</button>' +
           '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('users', 13) + ' Open</a>' +
           '</div>';
@@ -239,74 +188,6 @@ __X__
   }
   loadClasses();
 
-  /* ---- cloud save ---- */
-  var cloudBox = document.getElementById('cloudBox');
-  function paintCloud(st) {
-    if (!st.connected) {
-      cloudBox.innerHTML =
-        '<b style="font-size:15px">Cloud save — not connected</b>' +
-        '<p class="small muted" style="margin:4px 0 10px">' +
-        'Connect a GitHub token to keep the whole database safe in the cloud: it is encrypted, auto-saved after ' +
-        'every change, and restored automatically when the server restarts.</p>' +
-        '<div class="row" style="flex-wrap:wrap">' +
-        '<input id="cloudTok" type="password" placeholder="GitHub personal access token" style="min-width:230px" autocomplete="off">' +
-        '<input id="cloudPw" type="password" placeholder="Cloud passphrase (6+ chars)" style="min-width:190px" autocomplete="off">' +
-        '<button class="btn primary" id="cloudConnect"></button></div>' +
-        '<p class="hintline">The token needs Contents: Read and write permission on this repository.</p>';
-      document.getElementById('cloudConnect').innerHTML = icon('globe', 15) + ' Connect';
-      document.getElementById('cloudConnect').onclick = async function () {
-        this.disabled = true;
-        try {
-          await POST('/api/admin/cloud/connect', {
-            token: document.getElementById('cloudTok').value.trim(),
-            passphrase: document.getElementById('cloudPw').value
-          });
-          toast('Cloud storage connected');
-          loadCloud();
-        } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
-      };
-      return;
-    }
-    var state = st.saving ? 'Saving to cloud…'
-      : st.lastError ? 'Error — ' + esc(st.lastError)
-      : st.lastSavedAt ? 'Saved ' + fmtAgo(st.lastSavedAt)
-      : 'Connected — not saved yet';
-    var dotCls = st.lastError ? 'bad' : (st.lastSavedAt ? 'ok' : '');
-    cloudBox.innerHTML =
-      '<div class="cloudrow"><span class="dot ' + dotCls + '"></span><b style="font-size:15px">Cloud save</b>' +
-      '<span class="small muted">' + state + '</span><span class="spacer"></span>' +
-      '<button class="btn sm" id="cloudSaveNow"></button>' +
-      '<button class="btn sm" id="cloudRestore"></button></div>' +
-      '<p class="hintline">Auto-saves to the <b>' + esc(st.branch) + '</b> branch of your GitHub repo, AES-256 encrypted — ' +
-      st.users + ' users, ' + st.quizzes + ' quizzes, ' + st.attempts + ' attempts. Restored automatically on server restart.</p>';
-    document.getElementById('cloudSaveNow').innerHTML = icon('upload', 14) + ' Save to cloud now';
-    document.getElementById('cloudRestore').innerHTML = icon('download', 14) + ' Restore from cloud';
-    document.getElementById('cloudSaveNow').onclick = async function () {
-      this.disabled = true;
-      try { await POST('/api/admin/cloud/save', {}); toast('Saved to the cloud'); }
-      catch (err) { toast(err.message, 'bad'); }
-      this.disabled = false;
-      loadCloud();
-    };
-    document.getElementById('cloudRestore').onclick = async function () {
-      this.disabled = true;
-      try {
-        var r = await POST('/api/admin/cloud/restore', {});
-        toast('Restored from cloud — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
-        await refresh();
-        loadClasses();
-        loadCloud();
-        this.disabled = false;
-        return;
-      } catch (err) { toast(err.message, 'bad'); }
-      this.disabled = false;
-    };
-  }
-  async function loadCloud() {
-    try { paintCloud(await GET('/api/admin/cloud/status')); } catch (e) { /* offline */ }
-  }
-  loadCloud();
-  setInterval(function () { if (!document.hidden) loadCloud(); }, 30000);
 
 })().catch(function () {});
 </script>

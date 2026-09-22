@@ -102,7 +102,7 @@ restore, joining a class — also update the screen in place.
   cloud** a few seconds after every change — AES-256-GCM encrypted, stored on a
   `cloud-data` branch of your repository.
 - The server **restores from the cloud automatically on startup**, so quizzes and results
-  survive restarts and redeploys. Manual **Save now / Restore** buttons too.
+  survive restarts and redeploys — no user action needed, everything just works.
 
 **Automated grading & real-time results**
 - Grading runs server-side the instant an attempt is submitted.
@@ -280,12 +280,15 @@ All state lives in `data/db.json` — delete the file to start completely fresh 
 Everything (users, quizzes, questions, attempts, notifications, classes) lives in
 `data/db.json` on the server — and can be **saved to the cloud** so nothing is lost.
 
-**Cloud save (recommended)** — on the teacher dashboard, *Data, cloud & backup*:
+**Cloud save (recommended, fully automatic)** — there is nothing to do in the app; the
+database backs itself up:
 
 1. Create a GitHub **fine-grained personal access token** with **Contents: Read and write**
    permission on your repository.
-2. Click **Connect**, paste the token and choose a **cloud passphrase** (6+ characters —
-   keep it, you'll need it to recover data on a new server).
+2. Give it to the server once, as environment variables (see §8 for hosts like Render):
+   `OQAS_CLOUD_TOKEN` (the token) and `OQAS_CLOUD_PASSPHRASE` (6+ characters — keep it,
+   you'll need it to recover data on a new server). On your own machine you can also put a
+   `data/cloud.json` file with `{"token":"…","passphrase":"…"}` instead.
 3. Done. The database is **AES-256-GCM encrypted** and pushed to the `cloud-data` branch
    of your repo (file `cloud/db.json`) a few seconds after every change, and restored
    automatically whenever the server starts.
@@ -295,8 +298,8 @@ runs 1.5 s after every other change, a pending save is **flushed on server shutd
 startup the server reconciles local vs cloud (the newer side wins, and any account that exists
 only locally is rescued) — so a restart can no longer lose a just-created account.
 
-Recovering on a fresh server: install, start the server, connect the same token + passphrase,
-then press **Restore from cloud** (or restart — startup pulls it automatically).
+Recovering on a fresh server: set the same token + passphrase (environment variables or
+`data/cloud.json`) and start the server — startup pulls the data automatically.
 
 **Local backup file** — *Download backup* exports the entire database as JSON;
 *Restore backup* imports it back (the importing teacher stays signed in).
@@ -338,8 +341,7 @@ Manual steps (same result):
 
    With these set, the server restores the latest backup on every start and saves back
    after every change — accounts, quizzes and results survive restarts permanently.
-   (Cloud save can also be connected in-app from the teacher dashboard, but a file-based
-   connection does not survive a Render restart — the environment variables do.)
+   Cloud backup is fully automatic: teachers and students never see or manage it.
 
 > **Free-plan notes:** the service sleeps after ~15 minutes of inactivity, so the first
 > visit after a pause takes ~30–60 seconds to wake up. The filesystem is also reset on each

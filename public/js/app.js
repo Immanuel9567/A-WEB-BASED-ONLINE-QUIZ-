@@ -58,6 +58,7 @@
     volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
     volumeX: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
     chevronsLeft: '<polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>',
+    menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'
   };
   window.icon = function (name, size) {
@@ -236,12 +237,20 @@
       item('leaderboard', 'dashboard.html#leaderboard', 'award', 'Leaderboard')
     ];
 
+    document.body.classList.remove('sb-open'); // drawer never survives a re-render
+
     el.innerHTML =
+      '<header class="m-top">' +
+      '<button class="iconbtn" id="sbMenu" title="Menu" aria-label="Open menu">' + icon('menu', 21) + '</button>' +
+      '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
+      '<div class="bellwrap" style="margin-left:auto"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
+      icon('bell', 20) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
+      '</header>' +
       '<aside class="sidebar">' +
       '<div class="sb-head">' +
       '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
-      '<div class="bellwrap"><button class="iconbtn" id="bellBtn" title="Notifications" aria-label="Notifications">' +
-      icon('bell', 20) + '<span class="belldot" id="bellDot" hidden></span></button></div>' +
+      '<div class="bellwrap"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
+      icon('bell', 20) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
       '<button class="iconbtn sb-toggle" id="sbToggle" title="Collapse menu" aria-label="Collapse menu">' + icon('chevronsLeft', 18) + '</button>' +
       '</div>' +
       '<div class="sb-label">Menu</div>' +
@@ -255,8 +264,9 @@
       '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span></button>' +
       '<button class="btn ghost sm" id="navLogout">' + icon('logout', 15) + '<span class="lbl">Log out</span></button>' +
       '</div>' +
-      '<div class="notifpanel" id="notifPanel" hidden></div>' +
-      '</aside>';
+      '</aside>' +
+      '<div class="sb-backdrop" id="sbBackdrop"></div>' +
+      '<div class="notifpanel" id="notifPanel" hidden></div>';
 
     document.getElementById('navLogout').onclick = async function () {
       try { await POST('/api/auth/logout'); } catch (e) {}
@@ -266,6 +276,7 @@
 
     var profileBtn = document.getElementById('profileBtn');
     if (profileBtn) profileBtn.onclick = function () {
+      document.body.classList.remove('sb-open');
       editProfile(navUser).then(function (u) {
         if (u) navbar(u, navActive); // re-render sidebar with the new name — no page refresh
       });
@@ -289,6 +300,17 @@
       sbToggle.title = sbMin ? 'Expand menu' : 'Collapse menu';
       sbToggle.innerHTML = icon(sbMin ? 'chevronRight' : 'chevronsLeft', 18);
     }
+
+    /* mobile drawer: hamburger slides the side menu over the page */
+    var sbMenu = document.getElementById('sbMenu');
+    var sbBackdrop = document.getElementById('sbBackdrop');
+    function closeDrawer() { document.body.classList.remove('sb-open'); }
+    if (sbMenu) sbMenu.onclick = function () { document.body.classList.add('sb-open'); };
+    if (sbBackdrop) sbBackdrop.onclick = closeDrawer;
+    var sbAside = el.querySelector('.sidebar');
+    if (sbAside) sbAside.addEventListener('click', function (e) {
+      if (e.target && e.target.closest && e.target.closest('a')) closeDrawer();
+    });
   };
 
   async function fillSidebarClasses(user) {
@@ -321,19 +343,21 @@
   }
 
   function setupBell() {
-    var btn = document.getElementById('bellBtn');
+    var btns = $$('#nav [data-bell]');
     var panel = document.getElementById('notifPanel');
-    var dot = document.getElementById('bellDot');
+    var dots = $$('#nav [data-bell-dot]');
     var open = false, latestSeen = null;
 
-    btn.onclick = async function (e) {
-      e.stopPropagation();
-      open = !open;
-      panel.hidden = !open;
-      if (open) { await refresh(); markAllRead(); }
-    };
+    btns.forEach(function (btn) {
+      btn.onclick = async function (e) {
+        e.stopPropagation();
+        open = !open;
+        panel.hidden = !open;
+        if (open) { await refresh(); markAllRead(); }
+      };
+    });
     document.addEventListener('click', function (e) {
-      if (open && !panel.contains(e.target) && !btn.contains(e.target)) {
+      if (open && !panel.contains(e.target) && !(e.target.closest && e.target.closest('[data-bell]'))) {
         open = false;
         panel.hidden = true;
       }
@@ -398,8 +422,10 @@
     }
 
     function paintDot(unread) {
-      if (unread > 0) { dot.hidden = false; dot.textContent = unread > 99 ? '99+' : unread; }
-      else dot.hidden = true;
+      dots.forEach(function (dot) {
+        if (unread > 0) { dot.hidden = false; dot.textContent = unread > 99 ? '99+' : unread; }
+        else dot.hidden = true;
+      });
     }
 
     /* seen-state persisted across page reloads, so nothing pops up twice and

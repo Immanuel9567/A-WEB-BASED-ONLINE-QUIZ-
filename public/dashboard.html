@@ -190,7 +190,11 @@
       }).join('')
     : '<li class="muted">No results yet.</li>';
   }
-  loadAll();
+  try { loadAll(); }
+  catch (e) {
+    document.getElementById('quizzes').innerHTML =
+      '<div class="card"><p class="muted" style="margin:0">Could not load your quizzes — ' + esc(e.message) + '</p></div>';
+  }
 })().catch(function () {});
 </script>
 </body>
