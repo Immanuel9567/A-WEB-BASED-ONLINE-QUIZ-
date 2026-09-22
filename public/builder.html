@@ -11,24 +11,58 @@
 <div id="nav"></div>
 
 <main class="container">
-  <section class="pagehead">
-    <div>
-      <h1 id="qzTitle">Question bank</h1>
-      <p class="sub" id="qzMeta">Loading…</p>
-    </div>
-    <div class="row">
+  <section class="pagehead col">
+    <div class="row headactions">
       <a class="btn" href="teacher.html" id="backLink"></a>
       <a class="btn primary" id="insightsLink" href="#"></a>
       <button class="btn" id="pubBtn"></button>
     </div>
-  </section>
+    <div>
+      <h1 id="qzTitle">Question bank</h1>
+      <p class="sub" id="qzMeta">Loading…</p>
+    </div>
+  </section>  </section>
 
   <div class="twocol">
     <!-- ============ left: settings + question list ============ -->
     <section>
       <div class="card tight" style="margin-bottom:16px">
-        <div class="row" style="margin-bottom:6px">
-          <span class="ic" style="color:#1a73e8"></span><b style="font-size:14.5px">Security &amp; delivery kit</b>
+        <div class="row" style="margin-bottom:10px">
+          <b style="font-size:14.5px" id="setTitle">Quiz settings</b>
+        </div>
+        <div class="form-err" id="setErr" hidden></div>
+        <div class="field">
+          <label for="qsTitle">Quiz title</label>
+          <input id="qsTitle" type="text" placeholder="e.g. Data Structures — Mid-Semester Test">
+        </div>
+        <div class="formrow">
+          <div class="field">
+            <label for="qsSubject">Subject / course code</label>
+            <input id="qsSubject" type="text" placeholder="e.g. Computer Science (CSC 204)">
+          </div>
+          <div class="field">
+            <label for="qsVis">Visible to</label>
+            <select id="qsVis"><option value="">All students</option></select>
+            <div class="hint">Class quizzes only appear to students who joined that class.</div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="qsDesc">Description</label>
+          <textarea id="qsDesc" placeholder="What this assessment covers…"></textarea>
+        </div>
+        <div class="formrow">
+          <div class="field">
+            <label for="qsDur">Duration (min)</label>
+            <input id="qsDur" type="number" value="15" min="1" max="180">
+          </div>
+          <div class="field">
+            <label for="qsPass">Pass mark (%)</label>
+            <input id="qsPass" type="number" value="50" min="0" max="100">
+          </div>
+          <div class="field">
+            <label for="qsAtt">Attempts allowed</label>
+            <input id="qsAtt" type="number" value="2" min="1" max="10">
+          </div>
         </div>
         <div class="setrow">
           <label class="sw"><input type="checkbox" id="setShuffle"><i></i></label>
@@ -125,32 +159,60 @@
 <script>
 (async function () {
   var user = await requireLogin('teacher');
-  navbar(user, 'dashboard');
+  navbar(user, new URLSearchParams(location.search).get('id') ? 'dashboard' : 'create');
 
   var quizId = new URLSearchParams(location.search).get('id');
-  if (!quizId) { location.href = 'teacher.html'; return; }
+  var creating = !quizId; // no id = create a brand-new quiz
 
   document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + ' Quizzes';
   document.getElementById('insightsLink').innerHTML = icon('barChart', 15) + ' Insights';
-  document.getElementById('saveSettings').innerHTML = icon('save', 14) + ' Save settings';
+  document.getElementById('saveSettings').innerHTML = icon(creating ? 'plus' : 'save', 14) + (creating ? ' Create quiz' : ' Save settings');
   document.getElementById('addOptBtn').innerHTML = icon('plus', 14) + ' Add option';
   document.getElementById('saveDraftBtn').innerHTML = icon('fileText', 14) + ' Save as draft';
   document.getElementById('resetBtn').innerHTML = icon('x', 14) + ' Cancel edit';
   $('#backLink').href = 'teacher.html';
 
-  var data;
-  try { data = await GET('/api/quizzes/' + quizId + '/questions'); }
-  catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = 'teacher.html'; }, 1200); return; }
-  var quiz = data.quiz;
-  var questions = data.questions;
+  /* ---- visibility: the teacher's class (if any) ---- */
+  var qsVis = document.getElementById('qsVis');
+  try {
+    var cd = await GET('/api/classes/mine');
+    if (cd.class) {
+      qsVis.innerHTML = '<option value="">All students</option>' +
+        '<option value="' + esc(cd.class.id) + '">My class only — ' + esc(cd.class.name) + '</option>';
+    } else {
+      qsVis.disabled = true;
+    }
+  } catch (err) { qsVis.disabled = true; }
 
-  document.getElementById('qzTitle').textContent = quiz.title;
-  document.getElementById('qzMeta').textContent =
-    quiz.subject + ' · ' + quiz.durationMin + ' min · pass ' + quiz.passMark + '% · ' +
-    (quiz.published ? 'published' : 'draft');
-  document.getElementById('insightsLink').href = 'insights.html?id=' + quizId;
+  var quiz = null;
+  var questions = [];
+  if (creating) {
+    document.getElementById('qzTitle').textContent = 'Create quiz';
+    document.getElementById('qzMeta').textContent = 'Set the basics below, create the quiz, then add your questions.';
+    document.getElementById('insightsLink').hidden = true;
+    document.getElementById('pubBtn').hidden = true;
+  } else {
+    var data;
+    try { data = await GET('/api/quizzes/' + quizId + '/questions'); }
+    catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = 'teacher.html'; }, 1200); return; }
+    quiz = data.quiz;
+    questions = data.questions;
 
-  /* ================= publish toggle ================= */
+    document.getElementById('qzTitle').textContent = quiz.title;
+    document.getElementById('qzMeta').textContent =
+      quiz.subject + ' · ' + quiz.durationMin + ' min · pass ' + quiz.passMark + '% · ' +
+      (quiz.published ? 'published' : 'draft');
+    document.getElementById('insightsLink').href = 'insights.html?id=' + quizId;
+    document.getElementById('qsTitle').value = quiz.title;
+    document.getElementById('qsSubject').value = quiz.subject;
+    document.getElementById('qsDesc').value = quiz.description || '';
+    document.getElementById('qsDur').value = quiz.durationMin;
+    document.getElementById('qsPass').value = quiz.passMark;
+    document.getElementById('qsAtt').value = quiz.attemptsAllowed;
+    qsVis.value = (quiz.classes && quiz.classes.length) ? quiz.classes[0] : '';
+  }
+
+  /* ================= publish toggle (edit mode) ================= */
   var pubBtn = document.getElementById('pubBtn');
   function paintPub() {
     pubBtn.innerHTML = quiz.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish';
@@ -161,33 +223,56 @@
       var r = await PUT('/api/quizzes/' + quizId, { published: !quiz.published });
       quiz.published = r.quiz.published;
       paintPub();
-      toast(quiz.published ? 'Published — visible to students' : 'Unpublished — hidden from students');
+      toast(quiz.published ? 'Published — students were notified' : 'Unpublished — hidden from students');
     } catch (err) { toast(err.message, 'bad'); }
     pubBtn.disabled = false;
   };
-  paintPub();
+  if (!creating) paintPub();
 
-  /* ================= security & delivery kit ================= */
+  /* ================= quiz settings (create + edit) ================= */
   var setShuffle = document.getElementById('setShuffle');
   var setShuffleOpt = document.getElementById('setShuffleOpt');
   var setTab = document.getElementById('setTab');
-  setShuffle.checked = !!quiz.shuffle;
-  setShuffleOpt.checked = !!quiz.shuffleOptions;
-  setTab.value = quiz.tabSwitchPolicy || 'warn';
+  if (quiz) {
+    setShuffle.checked = !!quiz.shuffle;
+    setShuffleOpt.checked = !!quiz.shuffleOptions;
+    setTab.value = quiz.tabSwitchPolicy || 'warn';
+  }
   document.getElementById('saveSettings').onclick = async function () {
-    this.disabled = true;
+    var btn = this;
+    var errBox = document.getElementById('setErr');
+    errBox.hidden = true;
+    btn.disabled = true;
+    var payload = {
+      title: document.getElementById('qsTitle').value,
+      subject: document.getElementById('qsSubject').value,
+      description: document.getElementById('qsDesc').value,
+      durationMin: Number(document.getElementById('qsDur').value),
+      passMark: Number(document.getElementById('qsPass').value),
+      attemptsAllowed: Number(document.getElementById('qsAtt').value),
+      shuffle: setShuffle.checked,
+      shuffleOptions: setShuffleOpt.checked,
+      tabSwitchPolicy: setTab.value,
+      classes: qsVis.value ? [qsVis.value] : []
+    };
     try {
-      await PUT('/api/quizzes/' + quizId, {
-        shuffle: setShuffle.checked,
-        shuffleOptions: setShuffleOpt.checked,
-        tabSwitchPolicy: setTab.value
-      });
-      toast('Security settings saved');
-    } catch (err) { toast(err.message, 'bad'); }
-    this.disabled = false;
+      if (creating) {
+        var r = await POST('/api/quizzes', payload);
+        toast('Quiz created — now add your questions');
+        location.replace('builder.html?id=' + r.quiz.id);
+        return;
+      }
+      await PUT('/api/quizzes/' + quizId, payload);
+      toast('Quiz settings saved');
+      document.getElementById('qzTitle').textContent = payload.title;
+    } catch (err) {
+      errBox.innerHTML = icon('alertCircle', 16) + '<span>' + esc(err.message) + '</span>';
+      errBox.hidden = false;
+    }
+    btn.disabled = false;
   };
 
-  /* ================= question list ================= */
+  /* ================= question list  /* ================= question list ================= */
   var TYPE_LABEL = { single: 'Single choice', multiple: 'Multiple response', truefalse: 'True / False' };
   function renderList() {
     var drafts = questions.filter(function (q) { return q.draft; });

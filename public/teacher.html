@@ -16,10 +16,12 @@
       <h1>Teacher dashboard</h1>
       <p class="sub" id="welcome">Loading…</p>
     </div>
-    <button class="btn primary" id="newQuizBtn"></button>
   </section>
 
   <section class="statgrid" id="stats"></section>
+
+  <h2 class="sec">My class</h2>
+  <section class="card tight" id="classCard"><p class="small muted skeleton">Loading…</p></section>
 
   <h2 class="sec">My quizzes</h2>
   <section class="card tablecard">
@@ -31,15 +33,14 @@
       <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
-    <h2 class="sec">Data &amp; backup</h2>
+    <h2 class="sec">Data, cloud &amp; backup</h2>
   <section class="card tight">
-    <div class="row" style="align-items:flex-start">
+    <div id="cloudBox"><p class="small muted skeleton">Loading cloud status…</p></div>
+    <div class="row" style="align-items:flex-start;border-top:1px solid #e8eaed;padding-top:14px;margin-top:14px">
       <div style="flex:1;min-width:260px">
-        <b style="font-size:15px">Storage &amp; backup</b>
+        <b style="font-size:15px">Local backup file</b>
         <p class="small muted" style="margin:4px 0 0">
-          This prototype keeps its database (users, quizzes, questions, results) in a local JSON store on the
-          server — not in the cloud. Download a backup to keep your work safe; you can restore it on any server
-          at any time. Take a backup before the server is restarted or redeployed.
+          Download the whole database as a JSON file, or restore one — handy for moving to another server.
         </p>
       </div>
       <div class="row">
@@ -49,76 +50,13 @@
       </div>
     </div>
   </section>
-</main>
-
-<!-- ============ create quiz modal ============ -->
-<div class="overlay" id="createOverlay" hidden>
-  <div class="modal">
-    <h3>Create a new quiz</h3>
-    <p class="muted small">You can add questions on the next screen, then publish when ready.</p>
-    <div class="form-err" id="createErr" hidden></div>
-    <form id="createForm" novalidate>
-      <div class="field">
-        <label for="cqTitle">Quiz title</label>
-        <input id="cqTitle" type="text" placeholder="e.g. Data Structures — Mid-Semester Test">
-      </div>
-      <div class="field">
-        <label for="cqSubject">Subject / course code</label>
-        <input id="cqSubject" type="text" placeholder="e.g. Computer Science (CSC 204)">
-      </div>
-      <div class="field">
-        <label for="cqDesc">Description</label>
-        <textarea id="cqDesc" placeholder="What this assessment covers…"></textarea>
-      </div>
-      <div class="formrow">
-        <div class="field">
-          <label for="cqDur">Duration (minutes)</label>
-          <input id="cqDur" type="number" value="15" min="1" max="180">
-        </div>
-        <div class="field">
-          <label for="cqPass">Pass mark (%)</label>
-          <input id="cqPass" type="number" value="50" min="0" max="100">
-        </div>
-      </div>
-      <div class="formrow">
-        <div class="field">
-          <label for="cqAtt">Attempts allowed</label>
-          <input id="cqAtt" type="number" value="2" min="1" max="10">
-        </div>
-        <div class="field">
-          <label for="cqTab">Tab-switch policy</label>
-          <select id="cqTab">
-            <option value="warn">Warn &amp; log (recommended)</option>
-            <option value="autosubmit">Auto-submit quiz</option>
-            <option value="off">Off</option>
-          </select>
-        </div>
-      </div>
-      <div class="field">
-        <label>Security &amp; anti-cheat</label>
-        <div class="setrow">
-          <label class="sw"><input type="checkbox" id="cqShuffle" checked><i></i></label>
-          <div class="stxt"><b>Shuffle questions per student</b><span>Each candidate gets a different question order.</span></div>
-        </div>
-        <div class="setrow">
-          <label class="sw"><input type="checkbox" id="cqShuffleOpt"><i></i></label>
-          <div class="stxt"><b>Shuffle answer options per student</b><span>Answer positions can't be copied between candidates.</span></div>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn" id="createCancel">Cancel</button>
-        <button type="submit" class="btn primary" id="createGo">Create quiz</button>
-      </div>
-    </form>
-  </div>
-</div>
+</main></main>
 
 <script src="js/app.js"></script>
 <script>
 (async function () {
   var user = await requireLogin('teacher');
   navbar(user, 'dashboard');
-  document.getElementById('newQuizBtn').innerHTML = icon('plus', 16) + ' Create quiz';
   document.getElementById('welcome').textContent =
     'Welcome, ' + user.name + ' — build quizzes, monitor sessions live and review analytics.';
 
@@ -149,7 +87,7 @@
   var tb = document.getElementById('rows');
   if (!quizzes.length) {
     tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-      'No quizzes yet — create your first one above.</div></td></tr>';
+      'No quizzes yet — use Create quiz in the sidebar.</div></td></tr>';
   } else {
     tb.innerHTML = quizzes.map(row).join('');
     wire();
@@ -158,6 +96,7 @@
   function row(q) {
     var qCell = '<b>' + esc(q.title) + '</b><br><span class="small muted">' + esc(q.subject) + '</span>';
     if (q.draftCount > 0) qCell += ' <span class="chip">' + q.draftCount + ' draft' + (q.draftCount > 1 ? 's' : '') + '</span>';
+    if (q.classes && q.classes.length) qCell += ' <span class="chip">My class only</span>';
     return '<tr>' +
       '<td>' + qCell + '</td>' +
       '<td>' + (q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>') + '</td>' +
@@ -239,39 +178,116 @@
     this.value = '';
   };
 
-  /* ---- create modal ---- */
-  var ov = document.getElementById('createOverlay');
-  document.getElementById('newQuizBtn').onclick = function () { ov.hidden = false; };
-  document.getElementById('createCancel').onclick = function () { ov.hidden = true; };
-  ov.onclick = function (e) { if (e.target === ov) ov.hidden = true; };
-  if (new URLSearchParams(location.search).get('create')) ov.hidden = false; // sidebar quick action
-
-  document.getElementById('createForm').onsubmit = async function (e) {
-    e.preventDefault();
-    var errBox = document.getElementById('createErr');
-    errBox.hidden = true;
-    var btn = document.getElementById('createGo');
-    btn.disabled = true; btn.textContent = 'Creating…';
+  /* ---- my class (join code) ---- */
+  var classCard = document.getElementById('classCard');
+  async function loadClass() {
     try {
-      var r = await POST('/api/quizzes', {
-        title: document.getElementById('cqTitle').value,
-        subject: document.getElementById('cqSubject').value,
-        description: document.getElementById('cqDesc').value,
-        durationMin: Number(document.getElementById('cqDur').value),
-        passMark: Number(document.getElementById('cqPass').value),
-        attemptsAllowed: Number(document.getElementById('cqAtt').value),
-        shuffle: document.getElementById('cqShuffle').checked,
-        shuffleOptions: document.getElementById('cqShuffleOpt').checked,
-        tabSwitchPolicy: document.getElementById('cqTab').value
-      });
-      toast('Quiz created — now add questions');
-      location.href = 'builder.html?id=' + r.quiz.id;
+      var d = await GET('/api/classes/mine');
+      if (!d.class) {
+        classCard.innerHTML =
+          '<div class="row" style="flex-wrap:wrap;align-items:flex-start">' +
+          '<div style="flex:1;min-width:240px"><b style="font-size:15px">Create your class</b>' +
+          '<p class="small muted" style="margin:4px 0 0">Your class gets a unique join code — students use it to join and see your class quizzes.</p></div>' +
+          '<div class="row"><input id="clsName" type="text" placeholder="e.g. JSS 2 Blue" style="min-width:170px">' +
+          '<button class="btn primary" id="clsGo"></button></div></div>';
+        document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Create class';
+        document.getElementById('clsGo').onclick = async function () {
+          this.disabled = true;
+          try {
+            var r = await POST('/api/classes', { name: document.getElementById('clsName').value });
+            toast('Class created — share code ' + r.class.code + ' with your students');
+            loadClass();
+          } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
+        };
+        return;
+      }
+      var c = d.class;
+      classCard.innerHTML =
+        '<div class="row" style="flex-wrap:wrap;align-items:center">' +
+        '<div style="flex:1;min-width:230px">' +
+        '<b style="font-size:15px">' + esc(c.name) + '</b>' +
+        '<div class="hintline">' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + ' — students join with this code</div></div>' +
+        '<div class="codebox"><span class="code">' + esc(c.code) + '</span>' +
+        '<button class="btn sm" id="copyCode"></button></div>' +
+        '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('users', 14) + ' Open class</a>' +
+        '</div>';
+      document.getElementById('copyCode').innerHTML = icon('clipboardCheck', 14) + ' Copy';
+      document.getElementById('copyCode').onclick = function () {
+        try { navigator.clipboard.writeText(c.code); toast('Class code copied — ' + c.code); }
+        catch (e) { toast('Class code: ' + c.code, 'info'); }
+      };
     } catch (err) {
-      errBox.innerHTML = icon('alertCircle', 16) + '<span>' + esc(err.message) + '</span>';
-      errBox.hidden = false;
-      btn.disabled = false; btn.textContent = 'Create quiz';
+      classCard.innerHTML = '<p class="small muted">Could not load class info.</p>';
     }
-  };
+  }
+  loadClass();
+
+  /* ---- cloud save ---- */
+  var cloudBox = document.getElementById('cloudBox');
+  function paintCloud(st) {
+    if (!st.connected) {
+      cloudBox.innerHTML =
+        '<b style="font-size:15px">Cloud save — not connected</b>' +
+        '<p class="small muted" style="margin:4px 0 10px">' +
+        'Connect a GitHub token to keep the whole database safe in the cloud: it is encrypted, auto-saved after ' +
+        'every change, and restored automatically when the server restarts.</p>' +
+        '<div class="row" style="flex-wrap:wrap">' +
+        '<input id="cloudTok" type="password" placeholder="GitHub personal access token" style="min-width:230px" autocomplete="off">' +
+        '<input id="cloudPw" type="password" placeholder="Cloud passphrase (6+ chars)" style="min-width:190px" autocomplete="off">' +
+        '<button class="btn primary" id="cloudConnect"></button></div>' +
+        '<p class="hintline">The token needs Contents: Read and write permission on this repository.</p>';
+      document.getElementById('cloudConnect').innerHTML = icon('globe', 15) + ' Connect';
+      document.getElementById('cloudConnect').onclick = async function () {
+        this.disabled = true;
+        try {
+          await POST('/api/admin/cloud/connect', {
+            token: document.getElementById('cloudTok').value.trim(),
+            passphrase: document.getElementById('cloudPw').value
+          });
+          toast('Cloud storage connected');
+          loadCloud();
+        } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
+      };
+      return;
+    }
+    var state = st.saving ? 'Saving to cloud…'
+      : st.lastError ? 'Error — ' + esc(st.lastError)
+      : st.lastSavedAt ? 'Saved ' + fmtAgo(st.lastSavedAt)
+      : 'Connected — not saved yet';
+    var dotCls = st.lastError ? 'bad' : (st.lastSavedAt ? 'ok' : '');
+    cloudBox.innerHTML =
+      '<div class="cloudrow"><span class="dot ' + dotCls + '"></span><b style="font-size:15px">Cloud save</b>' +
+      '<span class="small muted">' + state + '</span><span class="spacer"></span>' +
+      '<button class="btn sm" id="cloudSaveNow"></button>' +
+      '<button class="btn sm" id="cloudRestore"></button></div>' +
+      '<p class="hintline">Auto-saves to the <b>' + esc(st.branch) + '</b> branch of your GitHub repo, AES-256 encrypted — ' +
+      st.users + ' users, ' + st.quizzes + ' quizzes, ' + st.attempts + ' attempts. Restored automatically on server restart.</p>';
+    document.getElementById('cloudSaveNow').innerHTML = icon('upload', 14) + ' Save to cloud now';
+    document.getElementById('cloudRestore').innerHTML = icon('download', 14) + ' Restore from cloud';
+    document.getElementById('cloudSaveNow').onclick = async function () {
+      this.disabled = true;
+      try { await POST('/api/admin/cloud/save', {}); toast('Saved to the cloud'); }
+      catch (err) { toast(err.message, 'bad'); }
+      this.disabled = false;
+      loadCloud();
+    };
+    document.getElementById('cloudRestore').onclick = async function () {
+      this.disabled = true;
+      try {
+        var r = await POST('/api/admin/cloud/restore', {});
+        toast('Restored from cloud — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
+        setTimeout(function () { location.reload(); }, 900);
+        return;
+      } catch (err) { toast(err.message, 'bad'); }
+      this.disabled = false;
+    };
+  }
+  async function loadCloud() {
+    try { paintCloud(await GET('/api/admin/cloud/status')); } catch (e) { /* offline */ }
+  }
+  loadCloud();
+  setInterval(function () { if (!document.hidden) loadCloud(); }, 30000);
+
 })().catch(function () {});
 </script>
 </body>

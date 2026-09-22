@@ -73,6 +73,21 @@ New accounts (either role) can be created from the sign-in page.
 - **Per-student quiz history** — click any student to see their full attempt history with
   scores, outcomes, timing and integrity flags, and jump straight to each result review.
 
+**Classes with join codes**
+- Teachers register with a **class name** — OQAS generates a **unique join code** that stays
+  permanently on the teacher dashboard.
+- Students **join classes with a code** (as many classes as they like) from their dashboard,
+  and their joined classes appear in the sidebar for one-click navigation.
+- Quizzes can be visible to **all students** or **one class only**; class quizzes appear just
+  for members, on their dashboard and on the class page.
+
+**Cloud save (encrypted GitHub storage)**
+- Connect a GitHub personal access token once and the **whole database auto-saves to the
+  cloud** a few seconds after every change — AES-256-GCM encrypted, stored on a
+  `cloud-data` branch of your repository.
+- The server **restores from the cloud automatically on startup**, so quizzes and results
+  survive restarts and redeploys. Manual **Save now / Restore** buttons too.
+
 **Automated grading & real-time results**
 - Grading runs server-side the instant an attempt is submitted.
 - A 10-second background sweeper auto-grades expired attempts even if the student closes
@@ -83,6 +98,8 @@ New accounts (either role) can be created from the sign-in page.
   quiz (submitted, time-expired, or auto-submitted via tab switch), with scores and timing.
   Multiple notifications are grouped and sorted by quiz; a live toast appears while the
   teacher is online.
+- **Student notifications** — students get a bell notification the moment a teacher
+  publishes a new quiz.
 - **Live monitor** — who is writing, progress, time left and scores as they land
   (2-second polling), plus students who haven't started.
 - **Analytics** — average/highest/lowest, pass rate, score distribution, per-question item
@@ -168,6 +185,15 @@ New accounts (either role) can be created from the sign-in page.
 | `GET /api/quizzes/:id/monitor` | teacher | Live session snapshot (summary + rows + not-started) |
 | `GET /api/quizzes/:id/attempts` | teacher | Graded attempts table |
 | `GET /api/quizzes/:id/analytics` | teacher | Stats, distribution, item analysis, leaderboard |
+| `GET /api/classes/mine` | teacher | The teacher's class + join code |
+| `POST /api/classes` | teacher | Create a class (name) — returns its unique code |
+| `GET /api/classes` | any | Teacher: own class · Student: classes joined |
+| `POST /api/classes/join` | student | Join a class with its code |
+| `GET /api/classes/:id` | member | Class detail: quizzes (+ members & stats for the owner) |
+| `GET /api/admin/cloud/status` | teacher | Cloud save connection + last save state |
+| `POST /api/admin/cloud/connect` | teacher | Connect cloud storage (token + passphrase) |
+| `POST /api/admin/cloud/save` | teacher | Push the database to the cloud now |
+| `POST /api/admin/cloud/restore` | teacher | Pull the cloud copy back into the server |
 | `GET /api/students` | teacher | Enrolled students with aggregate stats |
 | `GET /api/students/:id/history` | teacher | One student's full attempt history |
 | `GET /api/admin/export` | teacher | Download full database (backup) |
@@ -204,6 +230,7 @@ quiz-system/
     ├── quiz.html          # timed quiz runner (autosave, tab-switch policy)
     ├── result.html        # instant result sheet + answer review
     ├── students.html      # enrolled students + per-student quiz history
+    ├── class.html         # class page: join code, members, class quizzes
     ├── teacher.html       # quiz management dashboard + data backup/restore
     ├── builder.html       # question bank editor + security kit + drafts
     └── insights.html      # live monitor · results + CSV · analytics
@@ -228,24 +255,32 @@ Deliberate simplifications, and how each would be hardened in production:
 **Run note:** the server binds `0.0.0.0` on port 3000 (`PORT` env overrides it).
 All state lives in `data/db.json` — delete the file to reset to a fresh seed.
 
-### Data & storage — read this before relying on saved data
+### Data & storage
 
-This prototype deliberately has **no cloud database**: everything (users, quizzes, questions,
-attempts, notifications) lives in one JSON file on the server, `data/db.json`. That means:
+Everything (users, quizzes, questions, attempts, notifications, classes) lives in
+`data/db.json` on the server — and can be **saved to the cloud** so nothing is lost.
 
-- **Restarting/redeploying the server** (or resetting a sandbox/preview environment) can
-  revert the file to an earlier state — quizzes created since then would be lost.
-- The file is **git-ignored**, so it is not part of the GitHub repository.
+**Cloud save (recommended)** — on the teacher dashboard, *Data, cloud & backup*:
 
-To protect your work, the teacher dashboard has a **Data & backup** panel:
+1. Create a GitHub **fine-grained personal access token** with **Contents: Read and write**
+   permission on your repository.
+2. Click **Connect**, paste the token and choose a **cloud passphrase** (6+ characters —
+   keep it, you'll need it to recover data on a new server).
+3. Done. The database is **AES-256-GCM encrypted** and pushed to the `cloud-data` branch
+   of your repo (file `cloud/db.json`) a few seconds after every change, and restored
+   automatically whenever the server starts.
 
-- **Download backup** — exports the entire database as a single JSON file.
-- **Restore backup** — imports a backup file and replaces the current database
-  (the importing teacher stays signed in; everyone else signs in again).
+Recovering on a fresh server: install, start the server, connect the same token + passphrase,
+then press **Restore from cloud** (or restart — startup pulls it automatically).
 
-Recommended habit: after creating quizzes or finishing an assessment session, download a
-backup. For permanent, multi-device storage in production, move to a hosted database —
-see the table above (PostgreSQL/MySQL, or attach a persistent disk on Render).
+**Local backup file** — *Download backup* exports the entire database as JSON;
+*Restore backup* imports it back (the importing teacher stays signed in).
+
+Notes:
+- Cloud payloads are encrypted — the public repo never exposes student data — but a hosted
+  database (PostgreSQL/MySQL, or a persistent disk on Render) is still the production-grade
+  upgrade path.
+- `data/db.json` and `data/cloud.json` are git-ignored; keep your token and passphrase safe.
 
 ---
 

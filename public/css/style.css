@@ -397,7 +397,7 @@ textarea { resize: vertical; min-height: 74px; }
 .explain .ic { color: #5f6368; margin-top: 1px; flex: 0 0 auto; }
 
 /* ---------------------------------------------------------------- insights */
-.tabs { display: flex; gap: 6px; border-bottom: 1px solid #e8eaed; margin-bottom: 22px; overflow-x: auto; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid #e8eaed; margin-bottom: 22px; }
 .tab {
   border: none; background: none; padding: 11px 16px; font-weight: 700; font-size: 14.5px;
   color: #5f6368; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px;
@@ -443,3 +443,37 @@ textarea { resize: vertical; min-height: 74px; }
   .container { padding: 0 16px; }
   .pagehead { margin-top: 20px; }
 }
+
+
+/* ============================ v3: filters, classes, cloud ============================ */
+/* toggle filter chips (live monitor) — click to filter, click again to unfilter */
+button.chip { border: 0; font: inherit; cursor: pointer; }
+button.chip.filter:hover { background: #e8eaed; }
+button.chip.filter.on { background: #e8f0fe; color: #174ea6; }
+.pillrow { row-gap: 8px; }
+
+/* left-aligned column page head (builder: back link + title + actions on the left) */
+.pagehead.col { flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 22px; }
+.pagehead.col .headactions { flex-wrap: wrap; }
+
+/* class code display (teacher dashboard + class page) */
+.codebox {
+  display: inline-flex; align-items: center; gap: 14px; padding: 14px 20px;
+  border: 1px dashed #c4c7c9; border-radius: 12px; background: #f8f9fa;
+}
+.codebox .code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 30px; font-weight: 800; letter-spacing: 8px; color: #174ea6;
+}
+.hintline { font-size: 12.5px; color: #5f6368; margin-top: 6px; }
+
+/* joined-class chips on the student dashboard */
+.classchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.classchips a.chip { text-decoration: none; }
+.classchips a.chip:hover { background: #e8f0fe; color: #174ea6; }
+
+/* cloud status line in the data card */
+.cloudrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #9aa0a6; flex: 0 0 9px; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }

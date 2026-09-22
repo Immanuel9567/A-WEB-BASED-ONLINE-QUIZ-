@@ -200,6 +200,10 @@
   };
 
   await loadList();
+
+  /* deep link: students.html?id=<userId> opens that student's history directly */
+  var deepId = new URLSearchParams(location.search).get('id');
+  if (deepId) openHistory(deepId);
 })().catch(function () {});
 </script>
 </body>

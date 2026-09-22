@@ -41,7 +41,7 @@ function meta(q) { // safe quiz summary (no answers involved)
     durationMin: q.durationMin, passMark: q.passMark, attemptsAllowed: q.attemptsAllowed,
     shuffle: !!q.shuffle, shuffleOptions: !!q.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(q.tabSwitchPolicy) ? q.tabSwitchPolicy : 'warn',
-    published: !!q.published, createdAt: q.createdAt
+    published: !!q.published, createdAt: q.createdAt, classes: q.classes || []
   };
 }
 function publicQuestion(q) { // what a student may see BEFORE grading
@@ -56,6 +56,7 @@ function saveDb() {
   const tmp = DB_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 1));
   fs.renameSync(tmp, DB_FILE); // atomic replace
+  scheduleCloudSave(); // debounced push to cloud storage (no-op when not connected)
 }
 
 function seed() {
@@ -230,6 +231,7 @@ function loadDb() {
     seed();
   }
   if (!db.notifications) db.notifications = []; // migration for older stores
+  if (!db.classes) db.classes = []; // migration for older stores
 }
 
 /* -------------------------------------------------------- grading engine    */
@@ -367,6 +369,70 @@ function serveStatic(p, res) {
   });
 }
 
+/* ------------------------------------------------------- classes & visibility */
+function classPublic(c) {
+  const t = byId(db.users, c.teacherId);
+  return c && {
+    id: c.id, name: c.name, code: c.code,
+    teacherId: c.teacherId, teacherName: t ? t.name : 'Teacher',
+    memberCount: (c.studentIds || []).length, createdAt: c.createdAt
+  };
+}
+function genClassCode() {
+  const CH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  for (;;) {
+    let code = '';
+    for (let i = 0; i < 6; i++) code += CH[Math.floor(Math.random() * CH.length)];
+    if (!db.classes.some((c) => c.code === code)) return code;
+  }
+}
+function myClassIds(u) {
+  return db.classes.filter((c) => (c.studentIds || []).includes(u.id)).map((c) => c.id);
+}
+function canSeeQuiz(u, q) {
+  if (!u || u.role === 'teacher') return true;
+  const cs = q.classes || [];
+  return !cs.length || cs.some((id) => myClassIds(u).includes(id));
+}
+function sanitizeClasses(list, teacher) {
+  if (!Array.isArray(list)) return [];
+  const mine = db.classes.filter((c) => c.teacherId === teacher.id).map((c) => c.id);
+  return [...new Set(list)].filter((id) => mine.includes(id));
+}
+function notifyQuizPublished(quiz, teacher) {
+  let targets;
+  if ((quiz.classes || []).length) {
+    const ids = new Set();
+    for (const cid of quiz.classes) {
+      const c = byId(db.classes, cid);
+      if (c) (c.studentIds || []).forEach((sid) => ids.add(sid));
+    }
+    targets = [...ids].map((sid) => byId(db.users, sid)).filter((u) => u && u.role === 'student');
+  } else {
+    targets = db.users.filter((u) => u.role === 'student');
+  }
+  for (const st of targets) {
+    db.notifications.push({
+      id: uid('n'), userId: st.id, quizId: quiz.id, quizTitle: quiz.title,
+      type: 'published', teacherName: teacher.name, createdAt: now(), read: false
+    });
+  }
+}
+function studentStat(u) { // aggregate performance for one student
+  const atts = db.attempts.filter((a) => a.userId === u.id);
+  const done = atts.filter((a) => a.status !== 'in_progress');
+  const last = done.length ? Math.max(...done.map((a) => a.submittedAt || a.startedAt)) : null;
+  return {
+    id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
+    attempts: done.length,
+    quizzesTaken: new Set(done.map((a) => a.quizId)).size,
+    avgPercent: done.length ? Math.round(done.reduce((x, a) => x + a.percent, 0) / done.length * 10) / 10 : null,
+    bestPercent: done.length ? Math.max(...done.map((a) => a.percent)) : null,
+    lastActivity: last,
+    inProgress: atts.some((a) => a.status === 'in_progress')
+  };
+}
+
 /* --------------------------------------------------------------- routing    */
 const routes = [];
 function route(method, pattern, handler) {
@@ -386,6 +452,12 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   const salt = crypto.randomBytes(8).toString('hex');
   const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: now() };
   db.users.push(user);
+  if (role === 'teacher' && String(body.className || '').trim().length >= 2) {
+    db.classes.push({
+      id: uid('cls'), name: String(body.className).trim(), code: genClassCode(),
+      teacherId: user.id, studentIds: [], createdAt: now()
+    });
+  }
   const token = crypto.randomBytes(24).toString('hex');
   db.sessions[token] = { userId: user.id, createdAt: now() };
   saveDb();
@@ -424,33 +496,37 @@ route('GET', '/api/users', async ({ user, res }) => {
 });
 
 /* ======== QUIZZES ======== */
+function quizFor(q, user) { // meta + counters, personalised for the viewer
+  const qs = db.questions[q.id] || [];
+  const live = qs.filter((x) => !x.draft);
+  const atts = db.attempts.filter((a) => a.quizId === q.id);
+  const done = atts.filter((a) => a.status !== 'in_progress');
+  const mine = atts.filter((a) => a.userId === user.id);
+  const myDone = mine.filter((a) => a.status !== 'in_progress');
+  const inprog = mine.find((a) => a.status === 'in_progress');
+  return Object.assign(meta(q), {
+    questionCount: live.length,
+    draftCount: qs.length - live.length,
+    totalPoints: live.reduce((s, x) => s + x.points, 0),
+    attemptCount: atts.length,
+    finishedCount: done.length,
+    avgPercent: done.length ? Math.round(done.reduce((s, a) => s + a.percent, 0) / done.length * 10) / 10 : null,
+    attemptsUsed: myDone.length,
+    attemptsAllowed: q.attemptsAllowed,
+    bestPercent: myDone.length ? Math.max(...myDone.map((a) => a.percent)) : null,
+    bestPassed: myDone.length ? myDone.some((a) => a.passed) : null,
+    inProgressAttemptId: inprog ? inprog.id : null,
+    latestAttemptId: myDone.length ? myDone[myDone.length - 1].id : null
+  });
+}
 route('GET', '/api/quizzes', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   expireStale();
   const out = [];
   for (const q of db.quizzes) {
     if (user.role !== 'teacher' && !q.published) continue;
-    const qs = db.questions[q.id] || [];
-    const live = qs.filter((x) => !x.draft);
-    const atts = db.attempts.filter((a) => a.quizId === q.id);
-    const done = atts.filter((a) => a.status !== 'in_progress');
-    const mine = atts.filter((a) => a.userId === user.id);
-    const myDone = mine.filter((a) => a.status !== 'in_progress');
-    const inprog = mine.find((a) => a.status === 'in_progress');
-    out.push(Object.assign(meta(q), {
-      questionCount: live.length,
-      draftCount: qs.length - live.length,
-      totalPoints: live.reduce((s, x) => s + x.points, 0),
-      attemptCount: atts.length,
-      finishedCount: done.length,
-      avgPercent: done.length ? Math.round(done.reduce((s, a) => s + a.percent, 0) / done.length * 10) / 10 : null,
-      attemptsUsed: myDone.length,
-      attemptsAllowed: q.attemptsAllowed,
-      bestPercent: myDone.length ? Math.max(...myDone.map((a) => a.percent)) : null,
-      bestPassed: myDone.length ? myDone.some((a) => a.passed) : null,
-      inProgressAttemptId: inprog ? inprog.id : null,
-      latestAttemptId: myDone.length ? myDone[myDone.length - 1].id : null
-    }));
+    if (user.role !== 'teacher' && !canSeeQuiz(user, q)) continue; // class-scoped quiz
+    out.push(quizFor(q, user));
   }
   out.sort((a, b) => b.createdAt - a.createdAt);
   send(res, 200, { quizzes: out });
@@ -479,8 +555,10 @@ route('POST', '/api/quizzes', async ({ user, body, res }) => {
   const v = validQuizBody(body);
   if (v.error) return send(res, 400, { error: v.error });
   const quiz = Object.assign({ id: uid('qz'), createdAt: now(), createdBy: user.id }, v);
+  quiz.classes = sanitizeClasses(body.classes, user);
   db.quizzes.push(quiz);
   db.questions[quiz.id] = [];
+  if (quiz.published) notifyQuizPublished(quiz, user);
   saveDb();
   send(res, 201, { quiz: meta(quiz) });
 });
@@ -574,7 +652,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
   if (isTeacher(user)) {
     return send(res, 200, { quiz: meta(quiz), questions: qs });
   }
-  if (!quiz.published) return send(res, 404, { error: 'Quiz not found.' });
+  if (!quiz.published || !canSeeQuiz(user, quiz)) return send(res, 404, { error: 'Quiz not found.' });
   send(res, 200, { quiz: meta(quiz), questionCount: qs.filter((x) => !x.draft).length });
 });
 
@@ -584,7 +662,10 @@ route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res })
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
   const v = validQuizBody(Object.assign({}, quiz, body));
   if (v.error) return send(res, 400, { error: v.error });
+  const wasPublished = quiz.published;
   Object.assign(quiz, v);
+  if (body.classes !== undefined) quiz.classes = sanitizeClasses(body.classes, user);
+  if (!wasPublished && quiz.published) notifyQuizPublished(quiz, user);
   saveDb();
   send(res, 200, { quiz: meta(quiz) });
 });
@@ -622,7 +703,7 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   if (user.role !== 'student') return send(res, 403, { error: 'Teachers cannot take quizzes — use a student account.' });
   expireStale();
   const quiz = byId(db.quizzes, body.quizId);
-  if (!quiz || !quiz.published) return send(res, 404, { error: 'Quiz not found.' });
+  if (!quiz || !quiz.published || !canSeeQuiz(user, quiz)) return send(res, 404, { error: 'Quiz not found.' });
   const allQs = db.questions[quiz.id] || [];
   const qs = allQs.filter((q) => !q.draft); // drafts never reach students
   if (!qs.length) return send(res, 400, { error: 'This quiz has no questions yet (only drafts or empty).' });
@@ -947,14 +1028,7 @@ route('POST', '/api/admin/import', async ({ user, req, body, res }) => {
       typeof b.questions !== 'object' || !Array.isArray(b.attempts)) {
     return send(res, 400, { error: 'Invalid backup file — expected an OQAS database export (JSON).' });
   }
-  db = {
-    users: b.users,
-    quizzes: b.quizzes,
-    questions: b.questions || {},
-    attempts: b.attempts,
-    notifications: Array.isArray(b.notifications) ? b.notifications : [],
-    sessions: {}
-  };
+  applyDbData(b);
   // keep the importing teacher signed in after the swap
   const m = String(req.headers['authorization'] || '').match(/^Bearer (.+)$/);
   if (m && db.users.some((u) => u.id === user.id)) db.sessions[m[1]] = { userId: user.id, createdAt: now() };
@@ -962,10 +1036,21 @@ route('POST', '/api/admin/import', async ({ user, req, body, res }) => {
   send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
 });
 
+function applyDbData(b) { // swap in a validated database (sessions handled by caller)
+  db = {
+    users: b.users,
+    quizzes: b.quizzes,
+    questions: b.questions || {},
+    attempts: b.attempts,
+    notifications: Array.isArray(b.notifications) ? b.notifications : [],
+    classes: Array.isArray(b.classes) ? b.classes : [],
+    sessions: {}
+  };
+}
+
 /* ======== NOTIFICATIONS (teacher) ======== */
 route('GET', '/api/notifications', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
-  if (user.role !== 'teacher') return send(res, 403, { error: 'Teachers only.' });
   expireStale();
   const mine = db.notifications
     .filter((n) => n.userId === user.id)
@@ -988,7 +1073,6 @@ route('GET', '/api/notifications', async ({ user, res }) => {
 
 route('POST', '/api/notifications/read', async ({ user, body, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
-  if (user.role !== 'teacher') return send(res, 403, { error: 'Teachers only.' });
   let changed = 0;
   for (const n of db.notifications) {
     if (n.userId !== user.id || n.read) continue;
@@ -1000,7 +1084,6 @@ route('POST', '/api/notifications/read', async ({ user, body, res }) => {
 
 route('DELETE', '/api/notifications', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
-  if (user.role !== 'teacher') return send(res, 403, { error: 'Teachers only.' });
   const before = db.notifications.length;
   db.notifications = db.notifications.filter((n) => n.userId !== user.id);
   if (db.notifications.length !== before) saveDb();
@@ -1026,6 +1109,279 @@ route('GET', '/api/leaderboard', async ({ user, res }) => {
     .slice(0, 10);
   send(res, 200, { rows });
 });
+
+/* ======== CLASSES ======== */
+route('GET', '/api/classes/mine', async ({ user, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
+  const c = db.classes.find((x) => x.teacherId === user.id);
+  send(res, 200, { class: c ? classPublic(c) : null });
+});
+
+route('POST', '/api/classes', async ({ user, body, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
+  if (db.classes.some((x) => x.teacherId === user.id)) {
+    return send(res, 400, { error: 'You already have a class — its code is on your dashboard.' });
+  }
+  const name = String(body.name || '').trim();
+  if (name.length < 2) return send(res, 400, { error: 'Please enter a class name (at least 2 characters).' });
+  const c = { id: uid('cls'), name, code: genClassCode(), teacherId: user.id, studentIds: [], createdAt: now() };
+  db.classes.push(c);
+  saveDb();
+  send(res, 201, { class: classPublic(c) });
+});
+
+route('GET', '/api/classes', async ({ user, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (isTeacher(user)) {
+    const own = db.classes.filter((c) => c.teacherId === user.id).map(classPublic);
+    return send(res, 200, { classes: own });
+  }
+  const mine = db.classes.filter((c) => (c.studentIds || []).includes(user.id)).map(classPublic);
+  send(res, 200, { classes: mine });
+});
+
+route('POST', '/api/classes/join', async ({ user, body, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (isTeacher(user)) return send(res, 403, { error: 'Only students join classes with a code.' });
+  const code = String(body.code || '').trim().toUpperCase();
+  if (code.length < 4) return send(res, 400, { error: 'Enter the class code from your teacher.' });
+  const c = db.classes.find((x) => x.code === code);
+  if (!c) return send(res, 404, { error: 'Class code not found — check it with your teacher.' });
+  if ((c.studentIds || []).includes(user.id)) {
+    return send(res, 400, { error: 'You have already joined ' + c.name + '.' });
+  }
+  c.studentIds = c.studentIds || [];
+  c.studentIds.push(user.id);
+  saveDb();
+  send(res, 200, { class: classPublic(c) });
+});
+
+route('GET', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  const c = byId(db.classes, params[0]);
+  if (!c) return send(res, 404, { error: 'Class not found.' });
+  const isOwner = isTeacher(user) && c.teacherId === user.id;
+  const isMember = (c.studentIds || []).includes(user.id);
+  if (!isOwner && !isMember) return send(res, 403, { error: 'You are not a member of this class.' });
+  const quizzes = db.quizzes
+    .filter((q) => (q.classes || []).includes(c.id))
+    .filter((q) => isOwner || (q.published && canSeeQuiz(user, q)))
+    .map((q) => quizFor(q, user))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const out = { class: classPublic(c), quizzes };
+  if (isOwner) {
+    out.members = (c.studentIds || [])
+      .map((sid) => byId(db.users, sid))
+      .filter(Boolean)
+      .map(studentStat)
+      .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+  }
+  send(res, 200, out);
+});
+
+/* ======== CLOUD SAVE (encrypted GitHub branch) ======== */
+const CLOUD_REPO   = process.env.OQAS_CLOUD_REPO   || 'Immanuel9567/A-WEB-BASED-ONLINE-QUIZ-';
+const CLOUD_BRANCH = process.env.OQAS_CLOUD_BRANCH || 'cloud-data';
+const CLOUD_FILE   = process.env.OQAS_CLOUD_PATH   || 'cloud/db.json';
+const GH = 'https://api.github.com';
+
+function cloudConfigPaths() { // first existing wins; connect writes to all
+  const list = [];
+  if (process.env.OQAS_CLOUD_CONFIG) list.push(process.env.OQAS_CLOUD_CONFIG);
+  list.push(path.join(__dirname, 'data', 'cloud.json')); // portable default
+  list.push('/home/user/.oqas-cloud.json');              // sandbox-persistent copy
+  return list;
+}
+let cloudCfg = null;
+function loadCloudCfg() {
+  cloudCfg = null;
+  for (const p of cloudConfigPaths()) {
+    try {
+      const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (c && c.token && c.passphrase) { cloudCfg = c; return; }
+    } catch (e) { /* keep looking */ }
+  }
+}
+loadCloudCfg();
+
+const cloudState = { lastSavedAt: null, lastError: null, saving: false };
+
+function cloudEncrypt(obj, passphrase) {
+  const salt = crypto.randomBytes(12), iv = crypto.randomBytes(12);
+  const key = crypto.scryptSync(passphrase, salt, 32);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(JSON.stringify(obj), 'utf8'), cipher.final()]);
+  return {
+    app: 'OQAS', v: 1, enc: 'aes-256-gcm',
+    salt: salt.toString('base64'), iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    data: ct.toString('base64'), savedAt: now()
+  };
+}
+function cloudDecrypt(payload, passphrase) {
+  const key = crypto.scryptSync(passphrase, Buffer.from(payload.salt, 'base64'), 32);
+  const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'base64'));
+  d.setAuthTag(Buffer.from(payload.tag, 'base64'));
+  return JSON.parse(Buffer.concat([d.update(Buffer.from(payload.data, 'base64')), d.final()]).toString('utf8'));
+}
+
+async function ghFetch(token, url, opts) {
+  const headers = Object.assign(
+    { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'User-Agent': 'oqas-app' },
+    (opts && opts.headers) || {}
+  );
+  return fetch(url, Object.assign({}, opts, { headers }));
+}
+async function ensureCloudBranch(token) {
+  const ref = await ghFetch(token, GH + '/repos/' + CLOUD_REPO + '/git/ref/heads/' + CLOUD_BRANCH);
+  if (ref.status === 200) return;
+  if (ref.status !== 404) throw new Error('GitHub: cannot check branch (HTTP ' + ref.status + ')');
+  const repo = await (await ghFetch(token, GH + '/repos/' + CLOUD_REPO)).json();
+  if (!repo || !repo.default_branch) throw new Error('GitHub: cannot read repository.');
+  const head = await ghFetch(token, GH + '/repos/' + CLOUD_REPO + '/git/ref/heads/' + repo.default_branch);
+  const hj = await head.json();
+  if (!hj || !hj.object || !hj.object.sha) throw new Error('GitHub: cannot read default branch.');
+  const mk = await ghFetch(token, GH + '/repos/' + CLOUD_REPO + '/git/refs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref: 'refs/heads/' + CLOUD_BRANCH, sha: hj.object.sha })
+  });
+  if (mk.status !== 201) throw new Error('GitHub: cannot create cloud branch.');
+}
+
+async function cloudSaveNow() {
+  if (!cloudCfg) throw new Error('Cloud storage is not connected yet.');
+  if (cloudState.saving) return null;
+  cloudState.saving = true;
+  try {
+    await ensureCloudBranch(cloudCfg.token);
+    const payload = cloudEncrypt(Object.assign({}, db, { sessions: {} }), cloudCfg.passphrase);
+    const content = Buffer.from(JSON.stringify(payload, null, 1)).toString('base64');
+    const g = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
+    const body = { message: 'OQAS cloud save ' + new Date().toISOString(), branch: CLOUD_BRANCH, content };
+    if (g.status === 200) body.sha = (await g.json()).sha; // update existing file
+    else if (g.status !== 404) throw new Error('GitHub read failed (HTTP ' + g.status + ')');
+    const p = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (p.status !== 200 && p.status !== 201) {
+      const j = await p.json().catch(() => null);
+      throw new Error('GitHub write failed: ' + ((j && j.message) || ('HTTP ' + p.status)));
+    }
+    cloudState.lastSavedAt = now();
+    cloudState.lastError = null;
+    return { savedAt: cloudState.lastSavedAt };
+  } catch (e) {
+    cloudState.lastError = String((e && e.message) || e);
+    throw e;
+  } finally {
+    cloudState.saving = false;
+  }
+}
+
+let cloudTimer = null, cloudSuppress = 0;
+function scheduleCloudSave() { // debounced auto-save after local writes
+  if (!cloudCfg || cloudSuppress) return;
+  if (cloudTimer) clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(() => {
+    cloudTimer = null;
+    cloudSaveNow().catch((e) => console.error('cloud: auto-save failed -', e.message));
+  }, 5000);
+}
+if (cloudTimer && cloudTimer.unref) cloudTimer.unref();
+
+async function cloudFetchData() { // -> decrypted db object | null (nothing in cloud)
+  if (!cloudCfg) return null;
+  await ensureCloudBranch(cloudCfg.token);
+  const g = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
+  if (g.status === 404) return null;
+  if (g.status !== 200) throw new Error('GitHub read failed (HTTP ' + g.status + ')');
+  const j = await g.json();
+  const payload = JSON.parse(Buffer.from(j.content, 'base64').toString('utf8'));
+  if (!payload || payload.app !== 'OQAS' || payload.enc !== 'aes-256-gcm') return null;
+  return cloudDecrypt(payload, cloudCfg.passphrase);
+}
+
+route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  send(res, 200, {
+    connected: !!cloudCfg, repo: CLOUD_REPO, branch: CLOUD_BRANCH,
+    lastSavedAt: cloudState.lastSavedAt, lastError: cloudState.lastError,
+    saving: cloudState.saving, autoSave: true,
+    users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length
+  });
+});
+
+route('POST', '/api/admin/cloud/connect', async ({ user, body, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const token = String(body.token || '').trim();
+  const passphrase = String(body.passphrase || '');
+  if (!token) return send(res, 400, { error: 'Paste a GitHub personal access token.' });
+  if (passphrase.length < 6) return send(res, 400, { error: 'Choose a cloud passphrase of at least 6 characters.' });
+  const chk = await ghFetch(token, GH + '/repos/' + CLOUD_REPO);
+  if (chk.status !== 200) {
+    return send(res, 400, { error: 'Token cannot write to ' + CLOUD_REPO + ' (HTTP ' + chk.status + '). Give the token Contents: Read and write permission.' });
+  }
+  cloudCfg = { token, passphrase };
+  let wrote = 0;
+  for (const p of cloudConfigPaths()) {
+    try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(cloudCfg, null, 1)); wrote++; } catch (e) { /* best effort */ }
+  }
+  if (!wrote) { cloudCfg = null; return send(res, 500, { error: 'Could not write the cloud config file on this server.' }); }
+  try { await cloudSaveNow(); } catch (e) { /* connected but first save failed — surfaced via status */ }
+  send(res, 200, { ok: true, connected: true, lastSavedAt: cloudState.lastSavedAt, lastError: cloudState.lastError });
+});
+
+route('POST', '/api/admin/cloud/save', async ({ user, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  try {
+    const r = await cloudSaveNow();
+    send(res, 200, { ok: true, savedAt: (r && r.savedAt) || cloudState.lastSavedAt });
+  } catch (e) { send(res, 502, { error: 'Cloud save failed: ' + e.message }); }
+});
+
+route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  let data = null;
+  try { data = await cloudFetchData(); } catch (e) { return send(res, 502, { error: 'Cloud read failed: ' + e.message }); }
+  if (!data) return send(res, 404, { error: 'No cloud backup found yet — save once first.' });
+  if (!Array.isArray(data.users) || !Array.isArray(data.quizzes) ||
+      typeof data.questions !== 'object' || !Array.isArray(data.attempts)) {
+    return send(res, 400, { error: 'The cloud backup is not a valid OQAS database.' });
+  }
+  const keepSessions = db.sessions; // nobody gets signed out by a restore
+  cloudSuppress++;
+  try {
+    applyDbData(data);
+    db.sessions = keepSessions;
+    for (const k of Object.keys(db.sessions)) {
+      if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
+    }
+    saveDb();
+  } finally { cloudSuppress--; }
+  send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
+});
+
+async function cloudStartupRestore() { // pull the cloud copy before the server starts serving
+  if (!cloudCfg) return;
+  try {
+    const data = await cloudFetchData();
+    if (!data || !Array.isArray(data.users)) {
+      console.log('cloud: connected, no saved data yet - starting fresh');
+      return;
+    }
+    cloudSuppress++;
+    try {
+      applyDbData(data);
+      db.sessions = {}; // fresh boot - everyone signs in again
+      saveDb();
+    } finally { cloudSuppress--; }
+    console.log('cloud: restored ' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes, ' + db.attempts.length + ' attempts');
+  } catch (e) {
+    console.error('cloud: restore skipped -', e.message);
+  }
+}
 
 route('GET', '/api/health', async ({ res }) => send(res, 200, { ok: true, name: 'OQAS API', time: now() }));
 
@@ -1063,6 +1419,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+function startListen() {
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==================================================');
   console.log('  OQAS - Online Quiz & Automated Assessment System');
@@ -1070,5 +1427,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('  API + UI  ->  http://localhost:' + PORT);
   console.log('  Accounts  ->  teacher@demo.com / teach123');
   console.log('               student@demo.com / study123');
+  console.log('  Cloud     ->  ' + (cloudCfg ? 'connected (' + CLOUD_BRANCH + ' branch)' : 'not connected'));
   console.log('==================================================');
 });
+}
+cloudStartupRestore().catch(function () {}).finally(startListen);

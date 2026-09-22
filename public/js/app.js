@@ -169,7 +169,7 @@
     var links = isTeacher ? [
       item('dashboard', 'teacher.html', 'home', 'Dashboard'),
       item('students', 'students.html', 'users', 'Students'),
-      item('create', 'teacher.html?create=1', 'plus', 'Create quiz')
+      item('create', 'builder.html?new=1', 'plus', 'Create quiz')
     ] : [
       item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
       item('results', 'dashboard.html#results', 'fileText', 'My results'),
@@ -180,13 +180,13 @@
       '<aside class="sidebar">' +
       '<div class="sb-head">' +
       '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
-      (isTeacher
-        ? '<div class="bellwrap"><button class="iconbtn" id="bellBtn" title="Notifications" aria-label="Notifications">' +
-          icon('bell', 20) + '<span class="belldot" id="bellDot" hidden></span></button></div>'
-        : '') +
+      '<div class="bellwrap"><button class="iconbtn" id="bellBtn" title="Notifications" aria-label="Notifications">' +
+      icon('bell', 20) + '<span class="belldot" id="bellDot" hidden></span></button></div>' +
       '</div>' +
       '<div class="sb-label">Menu</div>' +
       '<nav class="sb-nav">' + links.join('') + '</nav>' +
+      '<div class="sb-label" id="sbClassLbl" hidden></div>' +
+      '<nav class="sb-nav" id="sbClassNav"></nav>' +
       '<div class="sb-foot">' +
       '<div class="uchip"><span class="avatar">' + esc(initials) + '</span>' +
       '<span class="utxt"><b>' + esc(user.name) + '</b>' +
@@ -202,14 +202,37 @@
       location.href = 'login.html';
     };
 
-    if (isTeacher) setupBell();
+    fillSidebarClasses(user);
+    setupBell(user);
   };
 
+  async function fillSidebarClasses(user) {
+    var box = document.getElementById('sbClassNav');
+    var lbl = document.getElementById('sbClassLbl');
+    if (!box || !lbl) return;
+    try {
+      var d = await GET('/api/classes');
+      var here = location.pathname.split('/').pop() + location.search;
+      var items = (d.classes || []).map(function (c) {
+        var href = 'class.html?id=' + c.id;
+        return '<a class="sb-item' + (href === here ? ' on' : '') + '" href="' + href + '">' +
+          icon('bookOpen', 18) + '<span>' + esc(c.name) + '</span></a>';
+      });
+      if (items.length) {
+        lbl.textContent = user.role === 'teacher' ? 'My class' : 'My classes';
+        lbl.hidden = false;
+        box.innerHTML = items.join('');
+      }
+    } catch (e) { /* not signed in or offline — leave hidden */ }
+  }
+
   function notifIcon(type) {
-    return type === 'expired' ? 'clock' : type === 'tabswitch' ? 'alertTriangle' : 'checkCircle';
+    return type === 'expired' ? 'clock' : type === 'tabswitch' ? 'alertTriangle' : type === 'published' ? 'send' : 'checkCircle';
   }
   function notifVerb(type) {
-    return type === 'expired' ? '— time expired, auto-graded' : type === 'tabswitch' ? '— auto-submitted after tab switch' : 'completed the quiz';
+    return type === 'expired' ? '— time expired, auto-graded'
+      : type === 'tabswitch' ? '— auto-submitted after tab switch'
+      : type === 'published' ? 'published a new quiz' : 'completed the quiz';
   }
 
   function setupBell() {
@@ -234,7 +257,7 @@
     function renderPanel(data) {
       if (!data.groups.length) {
         panel.innerHTML = '<div class="notif-head">' + icon('bell', 18) + ' Notifications</div>' +
-          '<div class="notif-empty">' + icon('bellOff', 30) + '<div style="margin-top:8px">No notifications yet — they appear when students submit.</div></div>';
+          '<div class="notif-empty">' + icon('bellOff', 30) + '<div style="margin-top:8px">No notifications yet.</div></div>';
         return;
       }
       var html = '<div class="notif-head">' + icon('bell', 18) + ' Notifications' +
@@ -245,11 +268,19 @@
         html += '<div class="notif-group-title">' + icon('fileText', 13) + ' ' + esc(g.quizTitle) +
           (g.unread ? ' <span class="chip">' + g.unread + ' new</span>' : '') + '</div>';
         g.items.slice(0, 12).forEach(function (n) {
-          html += '<div class="notif-item' + (n.read ? '' : ' unread') + '" data-attempt="' + esc(n.attemptId) + '" data-nid="' + esc(n.id) + '">' +
-            '<span class="nico">' + icon(notifIcon(n.type), 17) + '</span>' +
-            '<div><div class="nmain"><b>' + esc(n.studentName) + '</b> ' + notifVerb(n.type) + '</div>' +
-            '<div class="nsub">' + fmtPct(n.percent) + ' · ' + (n.passed ? 'Passed' : 'Failed') + ' · ' + fmtAgo(n.createdAt) + '</div></div>' +
-            '</div>';
+          if (n.type === 'published') {
+            html += '<div class="notif-item' + (n.read ? '' : ' unread') + '" data-goto="dashboard.html" data-nid="' + esc(n.id) + '">' +
+              '<span class="nico">' + icon(notifIcon(n.type), 17) + '</span>' +
+              '<div><div class="nmain"><b>' + esc(n.teacherName || 'Your teacher') + '</b> ' + notifVerb(n.type) + '</div>' +
+              '<div class="nsub">Take it from your dashboard · ' + fmtAgo(n.createdAt) + '</div></div>' +
+              '</div>';
+          } else {
+            html += '<div class="notif-item' + (n.read ? '' : ' unread') + '" data-goto="result.html?attempt=' + esc(n.attemptId) + '" data-nid="' + esc(n.id) + '">' +
+              '<span class="nico">' + icon(notifIcon(n.type), 17) + '</span>' +
+              '<div><div class="nmain"><b>' + esc(n.studentName) + '</b> ' + notifVerb(n.type) + '</div>' +
+              '<div class="nsub">' + fmtPct(n.percent) + ' · ' + (n.passed ? 'Passed' : 'Failed') + ' · ' + fmtAgo(n.createdAt) + '</div></div>' +
+              '</div>';
+          }
         });
       });
       html += '</div>';
@@ -258,7 +289,7 @@
       $$('#notifPanel .notif-item').forEach(function (item) {
         item.onclick = async function () {
           try { await POST('/api/notifications/read', { id: item.getAttribute('data-nid') }); } catch (e) {}
-          location.href = 'result.html?attempt=' + item.getAttribute('data-attempt');
+          location.href = item.getAttribute('data-goto') || 'dashboard.html';
         };
       });
       var clearBtn = document.getElementById('clearNotifs');
@@ -281,7 +312,11 @@
         if (open) renderPanel(d);
         var newest = d.groups[0] && d.groups[0].items[0];
         if (newest && latestSeen !== null && newest.id !== latestSeen) {
-          toast('<b>' + esc(newest.studentName) + '</b> ' + notifVerb(newest.type) + ' — ' + esc(newest.quizTitle) + ' (' + fmtPct(newest.percent) + ')', 'info');
+          if (newest.type === 'published') {
+            toast('New quiz published: <b>' + esc(newest.quizTitle) + '</b> — take it from your dashboard', 'info');
+          } else {
+            toast('<b>' + esc(newest.studentName) + '</b> ' + notifVerb(newest.type) + ' — ' + esc(newest.quizTitle) + ' (' + fmtPct(newest.percent) + ')', 'info');
+          }
         }
         if (newest) latestSeen = newest.id;
       } catch (e) { /* signed out or offline — ignore */ }

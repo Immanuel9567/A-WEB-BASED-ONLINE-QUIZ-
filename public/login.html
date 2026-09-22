@@ -80,6 +80,11 @@
           </div>
           <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
         </div>
+        <div class="field" id="classField" hidden>
+          <label for="rgClass">Class name</label>
+          <input id="rgClass" type="text" placeholder="e.g. JSS 2 Blue">
+          <div class="hint">Your class gets a unique join code — students use it to join your class.</div>
+        </div>
         <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
       </form>
     </div>
@@ -123,11 +128,13 @@
     role = 'student';
     this.classList.add('on');
     document.getElementById('roleTeacher').classList.remove('on');
+    document.getElementById('classField').hidden = true;
   };
   document.getElementById('roleTeacher').onclick = function () {
     role = 'teacher';
     this.classList.add('on');
     document.getElementById('roleStudent').classList.remove('on');
+    document.getElementById('classField').hidden = false;
   };
 
   document.getElementById('fillStudent').onclick = function () {
@@ -169,11 +176,15 @@
     var btn = document.getElementById('rgBtn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
+      if (role === 'teacher' && !document.getElementById('rgClass').value.trim()) {
+        throw new Error('Please enter a class name (e.g. JSS 2 Blue).');
+      }
       var r = await POST('/api/auth/register', {
         name: document.getElementById('rgName').value,
         email: document.getElementById('rgEmail').value,
         password: document.getElementById('rgPw').value,
-        role: role
+        role: role,
+        className: role === 'teacher' ? document.getElementById('rgClass').value : ''
       });
       setToken(r.token);
       afterAuth(r.user);

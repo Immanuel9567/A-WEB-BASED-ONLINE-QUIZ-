@@ -20,6 +20,9 @@
 
   <section class="statgrid" id="stats"></section>
 
+  <h2 class="sec">Classes</h2>
+  <section class="card tight" id="classesCard"><p class="small muted skeleton">Loading…</p></section>
+
   <h2 class="sec">Available quizzes</h2>
   <section class="quizgrid" id="quizzes">
     <div class="card skeleton">Loading quizzes…</div>
@@ -70,6 +73,37 @@
   function stat(num, lbl, accent) {
     return '<div class="stat' + (accent ? ' accent' : '') + '"><div class="num">' + num + '</div><div class="lbl">' + lbl + '</div></div>';
   }
+
+  /* ---- classes (join with a teacher's code) ------------------------------- */
+  var clEl = document.getElementById('classesCard');
+  async function loadClasses() {
+    try {
+      var d = await GET('/api/classes');
+      var chips = d.classes.map(function (c) {
+        return '<a class="chip" href="class.html?id=' + c.id + '">' + icon('bookOpen', 13) + ' ' + esc(c.name) + ' — ' + esc(c.teacherName) + '</a>';
+      }).join('');
+      clEl.innerHTML =
+        '<div class="row" style="flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:1;min-width:240px">' +
+        (chips ? '<div class="classchips">' + chips + '</div>' : '<p class="small muted" style="margin:0">You have not joined a class yet — enter your teacher\'s code to see their class quizzes.</p>') +
+        '</div>' +
+        '<div class="row"><input id="joinCode" type="text" placeholder="Class code" style="width:150px;text-transform:uppercase" autocomplete="off">' +
+        '<button class="btn primary" id="joinBtn"></button></div>' +
+        '</div>';
+      document.getElementById('joinBtn').innerHTML = icon('plus', 15) + ' Join class';
+      document.getElementById('joinBtn').onclick = async function () {
+        this.disabled = true;
+        try {
+          var r = await POST('/api/classes/join', { code: document.getElementById('joinCode').value });
+          toast('Joined ' + r.class.name + ' — its quizzes now appear on your dashboard');
+          loadClasses();
+        } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
+      };
+    } catch (err) {
+      clEl.innerHTML = '<p class="small muted">Could not load classes.</p>';
+    }
+  }
+  loadClasses();
 
   /* ---- quiz cards -------------------------------------------------------- */
   var qEl = document.getElementById('quizzes');

@@ -123,6 +123,51 @@
 
   /* ---- header ---- */
   var mon = null, monOffset = 0, monTimer = null, resRows = [];
+  var monFilters = new Set(); // status filters: click filters, click again unfiltered
+
+  var FILTERS = [
+    ['in_progress', 'Writing now', 'activity'],
+    ['submitted', 'Submitted', 'checkCircle'],
+    ['expired', 'Expired', 'clock']
+  ];
+  function renderSummary() {
+    if (!mon) return;
+    var s = mon.summary;
+    var counts = { in_progress: s.inProgress, submitted: s.submitted, expired: s.expired };
+    var html = pill(icon('users', 14) + ' ' + s.total + ' attempts', '');
+    FILTERS.forEach(function (f) {
+      html += '<button type="button" class="chip filter' + (monFilters.has(f[0]) ? ' on' : '') + '" data-f="' + f[0] + '" title="Click to filter, click again to unfilter">' +
+        icon(f[2], 14) + ' ' + f[1] + ' · ' + counts[f[0]] + '</button>';
+    });
+    html += pill(icon('barChart', 14) + ' avg ' + fmtPct(s.avgPercent), '');
+    document.getElementById('monSummary').innerHTML = html;
+  }
+  document.getElementById('monSummary').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-f]') : null;
+    if (!b) return;
+    var f = b.getAttribute('data-f');
+    if (monFilters.has(f)) monFilters.delete(f); else monFilters.add(f);
+    renderSummary();
+    renderMonRows();
+  });
+  function renderMonRows() {
+    var tb = document.getElementById('monRows');
+    if (!mon) return;
+    var rows = mon.rows.filter(function (r) { return !monFilters.size || monFilters.has(r.status); });
+    if (!mon.rows.length) {
+      tb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('eye', 34) + '</div>' +
+        'No attempts yet — waiting for students to start.</div></td></tr>';
+    } else if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="7"><div class="empty">No attempts match the current filter — click the chip again to unfilter.</div></td></tr>';
+    } else {
+      tb.innerHTML = rows.map(monRow).join('');
+    }
+    var ns = document.getElementById('notStartedCard');
+    if (mon.notStarted.length) {
+      ns.hidden = false;
+      document.getElementById('notStartedList').textContent = mon.notStarted.join(', ');
+    } else ns.hidden = true;
+  }
 
   /* ================= LIVE MONITOR (poll @2s) ================= */
   async function loadMon() {
@@ -133,27 +178,8 @@
       document.getElementById('iMeta').textContent =
         mon.quiz.subject + ' · ' + mon.quiz.durationMin + ' min · pass ' + mon.quiz.passMark + '%';
 
-      var s = mon.summary;
-      document.getElementById('monSummary').innerHTML =
-        pill(icon('users', 14) + ' ' + s.total + ' attempts', '') +
-        pill(icon('activity', 14) + ' ' + s.inProgress + ' writing now', s.inProgress ? 'accent' : '') +
-        pill(icon('checkCircle', 14) + ' ' + s.submitted + ' submitted', '') +
-        pill(icon('clock', 14) + ' ' + s.expired + ' expired', '') +
-        pill(icon('barChart', 14) + ' avg ' + fmtPct(s.avgPercent), '');
-
-      var tb = document.getElementById('monRows');
-      if (!mon.rows.length) {
-        tb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('eye', 34) + '</div>' +
-          'No attempts yet — waiting for students to start.</div></td></tr>';
-      } else {
-        tb.innerHTML = mon.rows.map(monRow).join('');
-      }
-
-      var ns = document.getElementById('notStartedCard');
-      if (mon.notStarted.length) {
-        ns.hidden = false;
-        document.getElementById('notStartedList').textContent = mon.notStarted.join(', ');
-      } else ns.hidden = true;
+      renderSummary();
+      renderMonRows();
     } catch (err) {
       document.getElementById('monRows').innerHTML =
         '<tr><td colspan="7" class="muted">' + esc(err.message) + '</td></tr>';
