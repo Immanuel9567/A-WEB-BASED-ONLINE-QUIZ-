@@ -39,7 +39,9 @@ function meta(q) { // safe quiz summary (no answers involved)
   return q && {
     id: q.id, title: q.title, subject: q.subject, description: q.description,
     durationMin: q.durationMin, passMark: q.passMark, attemptsAllowed: q.attemptsAllowed,
-    shuffle: !!q.shuffle, published: !!q.published, createdAt: q.createdAt
+    shuffle: !!q.shuffle, shuffleOptions: !!q.shuffleOptions,
+    tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(q.tabSwitchPolicy) ? q.tabSwitchPolicy : 'warn',
+    published: !!q.published, createdAt: q.createdAt
   };
 }
 function publicQuestion(q) { // what a student may see BEFORE grading
@@ -78,7 +80,7 @@ function seed() {
   const qz1 = { // CSC 101
     id: 'qz_csc101', title: 'Introduction to Computer Science', subject: 'Computer Science (CSC 101)',
     description: 'Test your grasp of core computing concepts — hardware, memory, number systems, software and the web.',
-    durationMin: 15, passMark: 50, attemptsAllowed: 2, shuffle: true, published: true,
+    durationMin: 15, passMark: 50, attemptsAllowed: 2, shuffle: true, shuffleOptions: true, tabSwitchPolicy: 'warn', published: true,
     createdAt: t - 72 * 3600e3, createdBy: teacher.id
   };
   const qs1 = [
@@ -114,7 +116,7 @@ function seed() {
   const qz2 = { // Web Technology
     id: 'qz_web', title: 'Web Technology Fundamentals', subject: 'Web Technology',
     description: 'HTML, CSS, HTTP and the building blocks of the modern web.',
-    durationMin: 10, passMark: 50, attemptsAllowed: 3, shuffle: true, published: true,
+    durationMin: 10, passMark: 50, attemptsAllowed: 3, shuffle: true, shuffleOptions: false, tabSwitchPolicy: 'warn', published: true,
     createdAt: t - 48 * 3600e3, createdBy: teacher.id
   };
   const qs2 = [
@@ -142,21 +144,21 @@ function seed() {
   const qz3 = { // draft quiz — demonstrates the publish workflow
     id: 'qz_apt', title: 'General Aptitude Test (Draft)', subject: 'General Aptitude',
     description: 'Logical reasoning and quantitative aptitude practice set.',
-    durationMin: 10, passMark: 60, attemptsAllowed: 1, shuffle: false, published: false,
+    durationMin: 10, passMark: 60, attemptsAllowed: 1, shuffle: false, shuffleOptions: false, tabSwitchPolicy: 'warn', published: false,
     createdAt: t - 6 * 3600e3, createdBy: teacher.id
   };
   const qs3 = [
     Q('qz_apt_q1', { type:'single', text:'A shirt costs ₦2,500 and is sold at a 20% discount. What is the selling price?',
       options:['₦2,000','₦2,100','₦2,300','₦2,400'], answer:0, points:2, explanation:'20% of 2500 = 500, so 2500 − 500 = ₦2,000.' }),
     Q('qz_apt_q2', { type:'single', text:'Complete the sequence: 2, 6, 12, 20, 30, ___',
-      options:['36','40','42','44'], answer:2, points:2, explanation:'Differences grow by 2: +4, +6, +8, +10, +12 → 42.' }),
+      options:['36','40','42','44'], answer:2, points:2, explanation:'Differences grow by 2: +4, +6, +8, +10, +12 -> 42.' }),
     Q('qz_apt_q3', { type:'truefalse', text:'A square is a rectangle.',
       options:['True','False'], answer:0, points:1, explanation:'A square satisfies the definition of a rectangle (four right angles).' }),
     Q('qz_apt_q4', { type:'single', text:'Which is the odd one out?',
       options:['Triangle','Square','Circle','Pentagon'], answer:2, points:2,
       explanation:'A circle has no straight sides or vertices.' }),
     Q('qz_apt_q5', { type:'single', text:'If today is Wednesday, what day will it be in 10 days?',
-      options:['Friday','Saturday','Sunday','Monday'], answer:1, points:2, explanation:'10 mod 7 = 3 → Wednesday + 3 = Saturday.' }),
+      options:['Friday','Saturday','Sunday','Monday'], answer:1, points:2, explanation:'10 mod 7 = 3 -> Wednesday + 3 = Saturday.' }),
   ];
 
   db = {
@@ -164,6 +166,7 @@ function seed() {
     quizzes: [qz1, qz2, qz3],
     questions: { [qz1.id]: qs1, [qz2.id]: qs2, [qz3.id]: qs3 },
     attempts: [],
+    notifications: [],
     sessions: {}
   };
 
@@ -196,6 +199,18 @@ function seed() {
   );
   db.attempts.forEach((a) => { a.status = 'submitted'; finishAttempt(a); });
 
+  // seed a couple of teacher notifications so the bell has history
+  const recent = db.attempts.slice().sort((x, y) => y.submittedAt - x.submittedAt).slice(0, 2);
+  recent.forEach((a, i) => {
+    const quiz = byId(db.quizzes, a.quizId);
+    db.notifications.push({
+      id: uid('n'), userId: quiz.createdBy, quizId: quiz.id, quizTitle: quiz.title,
+      attemptId: a.id, studentName: (byId(db.users, a.userId) || { name: 'Student' }).name,
+      type: 'submitted', percent: a.percent, score: a.score, maxScore: a.maxScore,
+      passed: a.passed, createdAt: a.submittedAt, read: i !== 0 // newest stays unread
+    });
+  });
+
   // one live, in-progress attempt (Amara, started ~90s ago) for the live monitor
   db.attempts.push({
     id: uid('a'), quizId: qz2.id, userId: amara.id, startedAt: t - 90e3,
@@ -214,11 +229,12 @@ function loadDb() {
   } catch (e) {
     seed();
   }
+  if (!db.notifications) db.notifications = []; // migration for older stores
 }
 
 /* -------------------------------------------------------- grading engine    */
 function orderedQuestions(a) {
-  const all = db.questions[a.quizId] || [];
+  const all = (db.questions[a.quizId] || []).filter((q) => !q.draft);
   if (!a.questionOrder) return all;
   const m = new Map(all.map((q) => [q.id, q]));
   return a.questionOrder.map((id) => m.get(id)).filter(Boolean);
@@ -260,6 +276,22 @@ function finishAttempt(a) {
   a.review = review; // snapshot for the result sheet
 }
 
+/** Push a notification to the teacher who owns the quiz.
+    Types: 'submitted' | 'expired' | 'tabswitch' */
+function notifySubmission(quiz, a, type) {
+  if (!quiz) return;
+  const teacher = byId(db.users, quiz.createdBy);
+  if (!teacher) return;
+  const student = byId(db.users, a.userId) || { name: 'Unknown' };
+  db.notifications.push({
+    id: uid('n'), userId: teacher.id, quizId: quiz.id, quizTitle: quiz.title,
+    attemptId: a.id, studentName: student.name, type,
+    percent: a.percent, score: a.score, maxScore: a.maxScore, passed: a.passed,
+    createdAt: now(), read: false
+  });
+  if (db.notifications.length > 400) db.notifications = db.notifications.slice(-400);
+}
+
 /** Background sweeper: auto-grade attempts whose time has expired.
     This is what makes results "process in real time" even if a student
     closes the browser without submitting. */
@@ -270,6 +302,7 @@ function expireStale() {
       a.status = 'expired';
       a.submittedAt = a.endsAt;
       finishAttempt(a);
+      notifySubmission(byId(db.quizzes, a.quizId), a, 'expired');
       changed = true;
     }
   }
@@ -398,14 +431,16 @@ route('GET', '/api/quizzes', async ({ user, res }) => {
   for (const q of db.quizzes) {
     if (user.role !== 'teacher' && !q.published) continue;
     const qs = db.questions[q.id] || [];
+    const live = qs.filter((x) => !x.draft);
     const atts = db.attempts.filter((a) => a.quizId === q.id);
     const done = atts.filter((a) => a.status !== 'in_progress');
     const mine = atts.filter((a) => a.userId === user.id);
     const myDone = mine.filter((a) => a.status !== 'in_progress');
     const inprog = mine.find((a) => a.status === 'in_progress');
     out.push(Object.assign(meta(q), {
-      questionCount: qs.length,
-      totalPoints: qs.reduce((s, x) => s + x.points, 0),
+      questionCount: live.length,
+      draftCount: qs.length - live.length,
+      totalPoints: live.reduce((s, x) => s + x.points, 0),
       attemptCount: atts.length,
       finishedCount: done.length,
       avgPercent: done.length ? Math.round(done.reduce((s, a) => s + a.percent, 0) / done.length * 10) / 10 : null,
@@ -432,6 +467,8 @@ function validQuizBody(body) {
     passMark: clamp(Math.round(Number(body.passMark) || 50), 0, 100),
     attemptsAllowed: clamp(Math.round(Number(body.attemptsAllowed) || 2), 1, 10),
     shuffle: !!body.shuffle,
+    shuffleOptions: !!body.shuffleOptions,
+    tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(body.tabSwitchPolicy) ? body.tabSwitchPolicy : 'warn',
     published: !!body.published
   };
 }
@@ -470,30 +507,37 @@ route('POST', '/api/quizzes/([A-Za-z0-9_]+)/questions', async ({ user, params, b
 function validQuestion(body) {
   const type = ['single', 'multiple', 'truefalse'].includes(body.type) ? body.type : null;
   if (!type) return { error: 'Invalid question type.' };
+  const draft = !!body.draft; // drafts may be incomplete — they never reach students
   const text = String(body.text || '').trim();
-  if (text.length < 3) return { error: 'Question text is too short.' };
+  if (!draft && text.length < 3) return { error: 'Question text is too short.' };
   let options, answer;
   if (type === 'truefalse') {
     options = ['True', 'False'];
-    answer = Number(body.answer) === 0 ? 0 : 1;
+    answer = (Number(body.answer) === 0 || Number(body.answer) === 1) ? Number(body.answer) : (draft ? null : 1);
   } else {
     options = (Array.isArray(body.options) ? body.options : []).map((o) => String(o || '').trim()).filter(Boolean);
-    if (options.length < 2) return { error: 'Provide at least 2 non-empty options.' };
+    if (!draft && options.length < 2) return { error: 'Provide at least 2 non-empty options.' };
     if (options.length > 6) return { error: 'Maximum of 6 options.' };
     if (type === 'single') {
       answer = Number(body.answer);
-      if (!(answer >= 0 && answer < options.length)) return { error: 'Mark one correct option.' };
+      if (!(answer >= 0 && answer < options.length)) answer = draft ? null : undefined;
     } else {
       answer = Array.isArray(body.answer)
         ? [...new Set(body.answer.map(Number))].filter((x) => Number.isInteger(x) && x >= 0 && x < options.length).sort((a, b) => a - b)
         : [];
-      if (!answer.length) return { error: 'Mark at least one correct option.' };
+      if (draft && !answer.length) answer = null;
     }
+  }
+  if (!draft) {
+    if (type === 'single' && !(answer >= 0)) return { error: 'Mark one correct option.' };
+    if (type === 'multiple' && (!Array.isArray(answer) || !answer.length)) return { error: 'Mark at least one correct option.' };
+    if (type === 'truefalse' && !(answer === 0 || answer === 1)) return { error: 'Mark the correct answer.' };
   }
   return { q: {
     id: body.id || uid('qn'), type, text, options, answer,
     points: clamp(Math.round(Number(body.points) || 1), 1, 10),
-    explanation: String(body.explanation || '').trim()
+    explanation: String(body.explanation || '').trim(),
+    draft
   } };
 }
 
@@ -531,7 +575,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
     return send(res, 200, { quiz: meta(quiz), questions: qs });
   }
   if (!quiz.published) return send(res, 404, { error: 'Quiz not found.' });
-  send(res, 200, { quiz: meta(quiz), questionCount: qs.length });
+  send(res, 200, { quiz: meta(quiz), questionCount: qs.filter((x) => !x.draft).length });
 });
 
 route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res }) => {
@@ -563,7 +607,12 @@ function attemptPayload(a) {
   return {
     attempt: { id: a.id, status: a.status, answers: a.answers || {}, startedAt: a.startedAt, endsAt: a.endsAt },
     quiz: meta(quiz),
-    questions: orderedQuestions(a).map(publicQuestion),
+    questions: orderedQuestions(a).map((q) => {
+      const pq = publicQuestion(q);
+      const perm = a.optionOrder && a.optionOrder[q.id];
+      if (perm) pq.options = perm.map((i) => q.options[i]); // display order maps to original index
+      return pq;
+    }),
     serverNow: now()
   };
 }
@@ -574,8 +623,9 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   expireStale();
   const quiz = byId(db.quizzes, body.quizId);
   if (!quiz || !quiz.published) return send(res, 404, { error: 'Quiz not found.' });
-  const qs = db.questions[quiz.id] || [];
-  if (!qs.length) return send(res, 400, { error: 'This quiz has no questions yet.' });
+  const allQs = db.questions[quiz.id] || [];
+  const qs = allQs.filter((q) => !q.draft); // drafts never reach students
+  if (!qs.length) return send(res, 400, { error: 'This quiz has no questions yet (only drafts or empty).' });
   const existing = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'in_progress');
   if (existing) return send(res, 200, attemptPayload(existing)); // resume
   const myDone = db.attempts.filter((a) => a.userId === user.id && a.quizId === quiz.id && a.status !== 'in_progress');
@@ -589,10 +639,25 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
       [order[i], order[j]] = [order[j], order[i]];
     }
   }
+  // per-attempt option order (anti-cheat: neighbours can't copy answer positions)
+  let optionOrder = null;
+  if (quiz.shuffleOptions) {
+    optionOrder = {};
+    for (const q of qs) {
+      if ((q.options || []).length > 2) {
+        const perm = q.options.map((_, i) => i);
+        for (let i = perm.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [perm[i], perm[j]] = [perm[j], perm[i]];
+        }
+        optionOrder[q.id] = perm;
+      }
+    }
+  }
   const a = {
     id: uid('a'), quizId: quiz.id, userId: user.id, startedAt: now(),
     endsAt: now() + quiz.durationMin * 60000, status: 'in_progress',
-    answers: {}, tabSwitches: 0, questionOrder: order
+    answers: {}, tabSwitches: 0, questionOrder: order, optionOrder
   };
   db.attempts.push(a);
   saveDb();
@@ -619,7 +684,8 @@ route('GET', '/api/attempts/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
     attempt: {
       id: a.id, status: a.status, score: a.score, maxScore: a.maxScore, percent: a.percent,
       passed: a.passed, submittedAt: a.submittedAt, startedAt: a.startedAt,
-      durationUsedSec: a.durationUsedSec, tabSwitches: a.tabSwitches || 0, review: a.review || []
+      durationUsedSec: a.durationUsedSec, tabSwitches: a.tabSwitches || 0,
+      autoSubmittedReason: a.autoSubmittedReason || null, review: a.review || []
     },
     quiz: meta(quiz),
     student: (byId(db.users, a.userId) || {}).name || 'Unknown',
@@ -637,6 +703,12 @@ route('POST', '/api/attempts/([A-Za-z0-9_]+)/answer', async ({ user, params, bod
   const q = (db.questions[a.quizId] || []).find((x) => x.id === body.questionId);
   if (!q) return send(res, 404, { error: 'Question not found.' });
   let val = body.answer;
+  // client sends positions in the (possibly shuffled) display order -> map to original indexes
+  const perm = (a.optionOrder && a.optionOrder[q.id]) || null;
+  if (perm) {
+    if (q.type === 'multiple') val = Array.isArray(val) ? val.map((d) => perm[Number(d)]) : [];
+    else val = perm[Number(val)];
+  }
   if (q.type === 'multiple') {
     val = Array.isArray(val)
       ? [...new Set(val.map(Number))].filter((x) => Number.isInteger(x) && x >= 0 && x < q.options.length).sort((x, y) => x - y)
@@ -663,11 +735,34 @@ route('POST', '/api/attempts/([A-Za-z0-9_]+)/submit', async ({ user, params, bod
   a.submittedAt = now();
   a.status = now() > a.endsAt ? 'expired' : 'submitted';
   finishAttempt(a); // ---- instant, automated grading happens HERE ----
+  notifySubmission(byId(db.quizzes, a.quizId), a, a.status === 'expired' ? 'expired' : 'submitted');
   saveDb();
   send(res, 200, {
     attemptId: a.id, status: a.status, score: a.score, maxScore: a.maxScore,
     percent: a.percent, passed: a.passed
   });
+});
+
+/* Tab-switch signal from the quiz runner — enforces the quiz's anti-cheat policy. */
+route('POST', '/api/attempts/([A-Za-z0-9_]+)/tabswitch', async ({ user, params, body, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  const a = db.attempts.find((x) => x.id === params[0]);
+  if (!a) return send(res, 404, { error: 'Attempt not found.' });
+  if (a.userId !== user.id) return send(res, 403, { error: 'Not your attempt.' });
+  if (typeof body.tabSwitches === 'number') a.tabSwitches = Math.max(a.tabSwitches || 0, Math.round(body.tabSwitches));
+  if (a.status !== 'in_progress') { saveDb(); return send(res, 200, { autoSubmitted: false, alreadyFinished: true }); }
+  const quiz = byId(db.quizzes, a.quizId);
+  if (quiz && quiz.tabSwitchPolicy === 'autosubmit') {
+    a.status = 'submitted';
+    a.submittedAt = now();
+    a.autoSubmittedReason = 'tab_switch';
+    finishAttempt(a);
+    notifySubmission(quiz, a, 'tabswitch');
+    saveDb();
+    return send(res, 200, { autoSubmitted: true, attemptId: a.id, percent: a.percent, passed: a.passed });
+  }
+  saveDb();
+  send(res, 200, { autoSubmitted: false });
 });
 
 route('GET', '/api/me/attempts', async ({ user, res }) => {
@@ -690,7 +785,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/monitor', async ({ user, params, res 
   expireStale();
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
-  const qs = db.questions[quiz.id] || [];
+  const qs = (db.questions[quiz.id] || []).filter((q) => !q.draft);
   const atts = db.attempts.filter((a) => a.quizId === quiz.id);
   const rows = atts.map((a) => {
     const u = byId(db.users, a.userId) || { name: 'Unknown' };
@@ -741,7 +836,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
   expireStale();
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
-  const qs = db.questions[quiz.id] || [];
+  const qs = (db.questions[quiz.id] || []).filter((q) => !q.draft);
   const done = db.attempts.filter((a) => a.quizId === quiz.id && a.status !== 'in_progress');
 
   // score distribution (5 bands)
@@ -795,6 +890,51 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
     distribution: bands.map((count, i) => ({ label: labels[i], count })),
     items, leaderboard
   });
+});
+
+/* ======== NOTIFICATIONS (teacher) ======== */
+route('GET', '/api/notifications', async ({ user, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (user.role !== 'teacher') return send(res, 403, { error: 'Teachers only.' });
+  expireStale();
+  const mine = db.notifications
+    .filter((n) => n.userId === user.id)
+    .sort((x, y) => y.createdAt - x.createdAt);
+  // group by quiz, newest activity first — multiple notifications stay sorted by quiz
+  const seen = new Map();
+  const groups = [];
+  for (const n of mine) {
+    let g = seen.get(n.quizId);
+    if (!g) {
+      g = { quizId: n.quizId, quizTitle: n.quizTitle || '(deleted quiz)', unread: 0, latestAt: n.createdAt, items: [] };
+      seen.set(n.quizId, g);
+      groups.push(g);
+    }
+    if (!n.read) g.unread++;
+    g.items.push(n);
+  }
+  send(res, 200, { unread: mine.filter((n) => !n.read).length, groups, serverNow: now() });
+});
+
+route('POST', '/api/notifications/read', async ({ user, body, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (user.role !== 'teacher') return send(res, 403, { error: 'Teachers only.' });
+  let changed = 0;
+  for (const n of db.notifications) {
+    if (n.userId !== user.id || n.read) continue;
+    if (!body.id || n.id === body.id) { n.read = true; changed++; }
+  }
+  if (changed) saveDb();
+  send(res, 200, { ok: true, changed });
+});
+
+route('DELETE', '/api/notifications', async ({ user, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  if (user.role !== 'teacher') return send(res, 403, { error: 'Teachers only.' });
+  const before = db.notifications.length;
+  db.notifications = db.notifications.filter((n) => n.userId !== user.id);
+  if (db.notifications.length !== before) saveDb();
+  send(res, 200, { ok: true });
 });
 
 /* ======== GLOBAL LEADERBOARD (students) ======== */
@@ -854,11 +994,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('┌──────────────────────────────────────────────────┐');
-  console.log('│  OQAS — Online Quiz & Automated Assessment System │');
-  console.log('├──────────────────────────────────────────────────┤');
-  console.log(`│  API + UI  →  http://localhost:${PORT}                │`);
-  console.log(`│  Accounts  →  teacher@demo.com / teach123         │`);
-  console.log(`│              student@demo.com / study123          │`);
-  console.log('└──────────────────────────────────────────────────┘');
+  console.log('==================================================');
+  console.log('  OQAS - Online Quiz & Automated Assessment System');
+  console.log('==================================================');
+  console.log('  API + UI  ->  http://localhost:' + PORT);
+  console.log('  Accounts  ->  teacher@demo.com / teach123');
+  console.log('               student@demo.com / study123');
+  console.log('==================================================');
 });

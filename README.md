@@ -2,7 +2,11 @@
 
 **A web-based online quiz and automated assessment system with real-time result processing.**
 This repository contains a fully working prototype: teacher-side quiz authoring, student-side
-timed quiz delivery, server-side automated grading, a live session monitor, and result analytics.
+timed quiz delivery, server-side automated grading, live session monitoring, teacher
+notifications, and result analytics.
+
+> **Note for the client:** the feature overview, how-it-works guide, architecture, data model
+> and API reference all live in this README (the web app itself stays focused on the workflow).
 
 ---
 
@@ -28,36 +32,59 @@ New accounts (either role) can be created from the sign-in page.
 
 ---
 
-## 2. Feature summary
+## 2. System overview
+
+### How it works
+
+1. **Teacher builds the quiz** — create a quiz (duration, pass mark, attempt limits), add
+   questions to the question bank (single-choice, multiple-response, true/false, points,
+   explanations), configure the security & anti-cheat kit, then publish.
+2. **Students take it live** — timed delivery with auto-saved answers, a navigation palette,
+   optional question/option shuffling, and a server-side countdown that auto-submits on expiry.
+3. **Results process in real time** — scores, pass/fail verdicts, answer reviews, teacher
+   notifications, leaderboards and analytics update the moment attempts land.
+
+### Features
 
 **Assessment authoring (teacher)**
-- Create quizzes with duration, pass mark, attempt limits, description.
-- Question bank per quiz: single-choice, multiple-response, true/false questions.
+- Quizzes with duration, pass mark, attempt limits and a draft → publish workflow.
+- Question bank per quiz: single-choice, multiple-response and true/false questions.
 - Per-question points (1–10) and post-grading explanations.
-- Draft → publish workflow; unpublish hides a quiz from students.
+- **Question drafts** — save an incomplete question as a draft and come back to finish it
+  later; drafts are never shown to students. The editor also auto-saves half-written
+  questions locally, so nothing is lost on accidental navigation.
+- **Security & anti-cheat kit per quiz:**
+  - *Shuffle questions per student* — each candidate receives a different question order.
+  - *Shuffle answer options per student* — answer positions can't be copied between candidates.
+  - *Tab-switch policy* — **Off / Warn & log / Auto-submit**: when set to auto-submit, the
+    moment a candidate leaves the quiz tab the server submits and grades their attempt.
 
 **Assessment delivery (student)**
 - Server-authoritative countdown timer; auto-submit + auto-grade at 00:00.
 - One-question-at-a-time interface with a navigation palette and progress bar.
 - Answers auto-saved to the server on every click (survives refresh/crash).
 - Attempt limits enforced; resume of interrupted attempts.
-- Anti-cheat signals: per-student question shuffling and tab-switch logging.
 
 **Automated grading & real-time results**
 - Grading runs server-side the instant an attempt is submitted.
-- A 10-second background sweeper auto-grades expired attempts even if the
-  student closes the browser — results appear without any human action.
-- Instant result sheet: score ring, pass/fail verdict, correct/wrong/skipped
-  breakdown, full answer review with explanations.
-- Live monitor: teacher sees who is writing, progress, time left and scores as
-  they land (2-second polling), plus students who haven't started.
-- Analytics: average/highest/lowest, pass rate, score distribution, per-question
-  item analysis (facility index + difficulty label), leaderboard, CSV export.
+- A 10-second background sweeper auto-grades expired attempts even if the student closes
+  the browser — no human action required.
+- Instant result sheet: score ring, pass/fail verdict, correct/wrong/skipped breakdown,
+  full answer review with explanations.
+- **Teacher notifications** — a bell in the teacher's navbar shows who has completed each
+  quiz (submitted, time-expired, or auto-submitted via tab switch), with scores and timing.
+  Multiple notifications are grouped and sorted by quiz; a live toast appears while the
+  teacher is online.
+- **Live monitor** — who is writing, progress, time left and scores as they land
+  (2-second polling), plus students who haven't started.
+- **Analytics** — average/highest/lowest, pass rate, score distribution, per-question item
+  analysis (facility index + difficulty label), leaderboard, CSV export.
 
 **Security (prototype level)**
 - Salted SHA-256 password hashes; bearer-token sessions with TTL.
-- Role checks on every endpoint; students never receive correct answers before
-  grading; result sheets visible only to the owner and teachers.
+- Role checks on every endpoint; students never receive correct answers before grading;
+  option/answer indexes are translated server-side when shuffling is enabled.
+- Result sheets visible only to the owner and teachers.
 
 ---
 
@@ -74,20 +101,23 @@ New accounts (either role) can be created from the sign-in page.
 │  server.js  —  zero-dependency Node.js HTTP server                     │
 │  ├── static file serving          (public/)                            │
 │  ├── REST API                     (/api/auth /quizzes /questions /...)  │
-│  ├── grading engine               (finishAttempt — runs on submit       │
-│  │                                 AND on timeout via 10s sweeper)     │
+│  ├── grading engine               (finishAttempt — runs on submit,      │
+│  │                                 tab-switch enforcement AND timeout   │
+│  │                                 via 10s sweeper)                     │
+│  ├── notifications                (grouped by quiz for the teacher)     │
 │  ├── attempt lifecycle            (start · autosave · expire · submit)  │
 │  └── JSON document store          (data/db.json, atomic writes)         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**How "real-time" works here.** Two mechanisms:
-1. **Instant processing** — grading executes synchronously inside the submit
-   request; the response already contains the score.
-2. **Live updates** — the teacher's monitor polls a lightweight summary
-   endpoint every 2 s, while the expiry sweeper converts timed-out attempts
-   into graded results in the background. (In production this layer would be
-   upgraded to WebSockets / Server-Sent Events; see §7.)
+**How "real-time" works here.** Three mechanisms:
+1. **Instant processing** — grading executes synchronously inside the submit request; the
+   response already contains the score.
+2. **Background sweeper** — a 10 s loop converts timed-out attempts into graded results
+   and pushes a notification to the teacher.
+3. **Live updates** — the teacher's bell and monitor poll lightweight endpoints (10 s and
+   2 s respectively). (In production this layer would be upgraded to WebSockets /
+   Server-Sent Events; see §7.)
 
 ---
 
@@ -96,9 +126,10 @@ New accounts (either role) can be created from the sign-in page.
 | Collection | Key fields |
 |---|---|
 | `users` | id, name, email, salt+pass hash, role (`teacher`/`student`), createdAt |
-| `quizzes` | id, title, subject, description, durationMin, passMark, attemptsAllowed, shuffle, published, createdAt, createdBy |
-| `questions` | keyed by quizId → array of {id, type, text, options[], answer, points, explanation} |
-| `attempts` | id, quizId, userId, startedAt, endsAt, status (`in_progress`/`submitted`/`expired`), answers{}, tabSwitches, questionOrder[], score, maxScore, percent, passed, durationUsedSec, review[] |
+| `quizzes` | id, title, subject, description, durationMin, passMark, attemptsAllowed, shuffle, shuffleOptions, tabSwitchPolicy (`off`/`warn`/`autosubmit`), published, createdAt, createdBy |
+| `questions` | keyed by quizId → array of {id, type, text, options[], answer, points, explanation, draft} |
+| `attempts` | id, quizId, userId, startedAt, endsAt, status (`in_progress`/`submitted`/`expired`), answers{}, tabSwitches, autoSubmittedReason, questionOrder[], optionOrder{}, score, maxScore, percent, passed, durationUsedSec, review[] |
+| `notifications` | id, userId (teacher), quizId, quizTitle, attemptId, studentName, type (`submitted`/`expired`/`tabswitch`), percent, passed, createdAt, read |
 | `sessions` | token → {userId, createdAt} |
 
 ---
@@ -112,22 +143,26 @@ New accounts (either role) can be created from the sign-in page.
 | `POST /api/auth/logout` | user | Invalidate session |
 | `GET /api/auth/me` | user | Current identity |
 | `GET /api/users` | teacher | List users |
-| `GET /api/quizzes` | user | Role-aware quiz list with attempt stats |
-| `POST /api/quizzes` | teacher | Create quiz |
+| `GET /api/quizzes` | user | Role-aware quiz list with attempt stats + draft counts |
+| `POST /api/quizzes` | teacher | Create quiz (incl. security kit fields) |
 | `GET /api/quizzes/:id` | user | Quiz detail (answers included for teachers only) |
-| `PUT /api/quizzes/:id` | teacher | Update / publish / unpublish |
+| `PUT /api/quizzes/:id` | teacher | Update / publish / unpublish / security kit |
 | `DELETE /api/quizzes/:id` | teacher | Delete quiz + questions + attempts |
-| `GET/POST /api/quizzes/:id/questions` | teacher | List / add questions |
-| `PUT /api/questions/:qid` | teacher | Edit question |
+| `GET/POST /api/quizzes/:id/questions` | teacher | List / add questions (drafts allowed) |
+| `PUT /api/questions/:qid` | teacher | Edit question (finish a draft with `draft:false`) |
 | `DELETE /api/questions/:qid` | teacher | Delete question |
 | `POST /api/attempts` | student | Start (or resume) attempt → sanitized questions + endsAt |
 | `GET /api/attempts/:id` | owner/teacher | In-progress payload **or** full graded result |
 | `POST /api/attempts/:id/answer` | owner | Auto-save one answer (server-validated window) |
 | `POST /api/attempts/:id/submit` | owner | Submit → **instant grading** → score |
+| `POST /api/attempts/:id/tabswitch` | owner | Tab-switch signal; enforces auto-submit policy |
 | `GET /api/me/attempts` | user | My attempt history |
 | `GET /api/quizzes/:id/monitor` | teacher | Live session snapshot (summary + rows + not-started) |
 | `GET /api/quizzes/:id/attempts` | teacher | Graded attempts table |
 | `GET /api/quizzes/:id/analytics` | teacher | Stats, distribution, item analysis, leaderboard |
+| `GET /api/notifications` | teacher | Notifications grouped by quiz + unread count |
+| `POST /api/notifications/read` | teacher | Mark one / all as read |
+| `DELETE /api/notifications` | teacher | Clear all notifications |
 | `GET /api/leaderboard` | user | Global top performers |
 
 ### Grading rules
@@ -135,6 +170,8 @@ New accounts (either role) can be created from the sign-in page.
 - **Multiple response** — all-or-nothing: the selected set must equal the key.
 - Percent = `score / maxScore × 100` (1 decimal); pass when `percent ≥ passMark`.
 - Late submits inside a 15 s grace window are accepted but flagged `expired`.
+- Shuffled option orders are translated back to original indexes before grading, so
+  grading logic is independent of display order.
 
 ---
 
@@ -143,17 +180,19 @@ New accounts (either role) can be created from the sign-in page.
 ```
 quiz-system/
 ├── server.js              # HTTP server, REST API, grading engine, seed data
-├── data/db.json           # JSON datastore (auto-created)
+├── package.json           # npm start wrapper (for hosts & Render auto-detect)
+├── render.yaml            # one-click deploy blueprint
+├── data/db.json           # JSON datastore (auto-created, git-ignored)
 └── public/
-    ├── css/style.css      # design system (no external assets/fonts)
-    ├── js/app.js          # shared client helpers (API wrapper, navbar, toasts)
-    ├── index.html         # landing page
+    ├── css/style.css      # Material white design system, single blue accent
+    ├── js/app.js          # shared helpers + uniform inline-SVG icon pack
+    ├── index.html         # landing (sign-in + repo link)
     ├── login.html         # sign in / register
     ├── dashboard.html     # student home (quizzes, results, leaderboard)
-    ├── quiz.html          # timed quiz runner (timer, palette, autosave)
+    ├── quiz.html          # timed quiz runner (autosave, tab-switch policy)
     ├── result.html        # instant result sheet + answer review
     ├── teacher.html       # quiz management dashboard
-    ├── builder.html       # question bank editor
+    ├── builder.html       # question bank editor + security kit + drafts
     └── insights.html      # live monitor · results + CSV · analytics
 ```
 
@@ -165,10 +204,11 @@ Deliberate simplifications, and how each would be hardened in production:
 
 | Area | Prototype | Production upgrade |
 |---|---|---|
-| Realtime channel | 2 s polling + background sweeper | WebSockets or Server-Sent Events |
+| Realtime channel | Polling (2 s monitor, 10 s bell) + background sweeper | WebSockets or Server-Sent Events |
 | Storage | JSON file with atomic writes | PostgreSQL / MySQL with transactions |
 | Auth | Salted SHA-256, bearer tokens | bcrypt/argon2, JWT rotation, HTTPS, rate limiting |
-| Integrity | Shuffling, tab-switch logging, server timers | Webcam/screen proctoring, IP logging, lockdown options |
+| Integrity | Shuffling, tab-switch logging/policy, server timers | Webcam/screen proctoring, IP logging, lockdown options |
+| Tab-switch enforcement | Client-reported signal (server-verified window) | Page-focus heuristics per delivery context |
 | Grading | Objective types only | Partial credit, essay questions with rubric assist |
 | Scale | Single process | Load-balanced stateless API + message queue for grading |
 

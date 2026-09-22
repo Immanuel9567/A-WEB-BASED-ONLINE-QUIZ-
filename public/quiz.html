@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quiz in progress — OQAS</title>
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 </head>
 <body>
 <div id="nav"></div>
@@ -34,7 +34,7 @@
 
     <div class="qcard">
       <div class="row">
-        <span class="chip info" id="qNum"></span>
+        <span class="chip" id="qNum"></span>
         <span class="chip" id="qPoints"></span>
         <span class="chip" id="qType"></span>
       </div>
@@ -43,14 +43,14 @@
     </div>
 
     <div class="row" style="margin-top:18px">
-      <button class="btn" id="prevBtn">← Previous</button>
+      <button class="btn" id="prevBtn">Previous</button>
       <span class="spacer"></span>
-      <button class="btn primary" id="nextBtn">Next →</button>
+      <button class="btn primary" id="nextBtn">Next</button>
       <button class="btn danger" id="submitBtn">Submit quiz</button>
     </div>
     <p class="small muted" style="margin:16px 2px 50px">
-      Answers are auto-saved as you click. When the timer reaches 00:00 the quiz is submitted
-      and graded automatically.
+      Answers are saved automatically as you click. When the timer reaches 00:00 the quiz is
+      submitted and graded automatically.
     </p>
   </div>
 </div>
@@ -80,6 +80,9 @@
   var A = data.attempt, quiz = data.quiz, questions = data.questions;
   var answers = Object.assign({}, A.answers);
   var idx = 0, tabSwitches = 0, submitting = false, saveTimer = null;
+
+  document.getElementById('prevBtn').innerHTML = icon('chevronLeft', 15) + ' Previous';
+  document.getElementById('nextBtn').innerHTML = 'Next ' + icon('chevronRight', 15);
 
   /* server/client clock offset keeps the countdown honest */
   var offset = data.serverNow - Date.now();
@@ -149,15 +152,14 @@
   function queueSave(qid, val) {
     var pill = document.getElementById('savepill');
     pill.hidden = false;
-    pill.className = 'savepill busy';
     pill.textContent = 'Saving…';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       POST('/api/attempts/' + attemptId + '/answer', { questionId: qid, answer: val })
-        .then(function () { pill.className = 'savepill'; pill.textContent = '✓ Saved'; })
+        .then(function () { pill.innerHTML = icon('check', 14) + ' Saved'; })
         .catch(function (err) {
           if (err.status === 409) { doSubmit(true); return; }
-          pill.className = 'savepill busy'; pill.textContent = '⚠ ' + err.message;
+          pill.textContent = 'Not saved — ' + err.message;
         });
     }, 350);
   }
@@ -189,14 +191,34 @@
     timerEl.classList.toggle('danger', s <= 60);
     if (s <= 0) { clearInterval(tick); doSubmit(true); }
   }, 250);
+  function startTimer() {
+    tick = setInterval(function () {
+      var s = remainSec();
+      timerEl.textContent = fmtClock(s);
+      timerEl.classList.toggle('danger', s <= 60);
+      if (s <= 0) { clearInterval(tick); doSubmit(true); }
+    }, 250);
+  }
 
-  /* ---------------- integrity: tab-switch logging ---------------- */
+  /* ---------------- integrity: tab-switch policy (server-enforced) --------- */
+  function showTabWarn(msg) {
+    var w = document.getElementById('tabwarn');
+    w.hidden = false;
+    w.innerHTML = icon('alertTriangle', 17) + '<span>' + msg + '</span>';
+  }
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden && !submitting) {
-      tabSwitches++;
-      var w = document.getElementById('tabwarn');
-      w.hidden = false;
-      w.textContent = '⚠ Tab switch detected (' + tabSwitches + '×) — this activity is recorded with your attempt.';
+    if (!document.hidden || submitting) return;
+    if (quiz.tabSwitchPolicy === 'off') return; // teacher disabled monitoring
+    tabSwitches++;
+    if (quiz.tabSwitchPolicy === 'autosubmit') {
+      showTabWarn('Tab switch detected — this quiz auto-submits on tab switching. Submitting your answers now…');
+      submitting = true;
+      clearInterval(tick);
+      POST('/api/attempts/' + attemptId + '/tabswitch', { tabSwitches: tabSwitches })
+        .then(function () { setTimeout(function () { location.href = 'result.html?attempt=' + attemptId; }, 1100); })
+        .catch(function () { location.href = 'result.html?attempt=' + attemptId; });
+    } else {
+      showTabWarn('Tab switch detected (' + tabSwitches + ' so far) — this activity is recorded with your attempt.');
     }
   });
 
@@ -212,13 +234,13 @@
     if (!auto) {
       var un = questions.length - answeredCount();
       var okToSubmit = await confirmModal({
-        title: auto ? 'Time is up — submitting' : 'Submit your quiz?',
+        title: 'Submit your quiz?',
         body: un > 0
           ? 'You still have <b>' + un + '</b> unanswered question' + (un > 1 ? 's' : '') + '. Unanswered questions score zero.'
           : 'All questions answered. Your result will be graded instantly.',
         okText: 'Submit & grade'
       });
-      if (!okToSubmit) { submitting = false; startTimerAgain(); return; }
+      if (!okToSubmit) { submitting = false; startTimer(); return; }
     }
     var btn = document.getElementById('submitBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Grading…'; }
@@ -230,16 +252,8 @@
       toast(err.message, 'bad');
       submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = 'Submit quiz'; }
-      startTimerAgain();
+      startTimer();
     }
-  }
-  function startTimerAgain() {
-    tick = setInterval(function () {
-      var s = remainSec();
-      timerEl.textContent = fmtClock(s);
-      timerEl.classList.toggle('danger', s <= 60);
-      if (s <= 0) { clearInterval(tick); doSubmit(true); }
-    }, 250);
   }
 
   document.getElementById('prevBtn').onclick = function () { gotoQ(idx - 1); };

@@ -6,21 +6,16 @@
 <title>OQAS — Online Quiz &amp; Automated Assessment System</title>
 <meta name="description" content="Web-based online quiz and automated assessment system with real-time result processing.">
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 </head>
 <body>
 
 <header class="topnav">
   <div class="container navrow">
     <a class="brand" href="index.html">
-      <svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="url(#lg)"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs></svg>
+      <svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>OQAS</span>
     </a>
-    <nav class="navlinks">
-      <a href="#features">Features</a>
-      <a href="#how">How it works</a>
-      <a href="#demo">Demo accounts</a>
-    </nav>
     <div class="navuser">
       <a class="btn primary sm" href="login.html">Sign in</a>
     </div>
@@ -29,79 +24,26 @@
 
 <section class="hero">
   <div class="hero-inner">
-    <span class="hero-badge">⚡ Real-time result processing</span>
+    <span class="hero-chip"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Automated grading &middot; Real-time results</span>
     <h1>Online Quiz &amp; Automated Assessment System</h1>
     <p class="lead">Teachers build timed quizzes in minutes. Students take them anywhere.
-      Grading happens automatically, instantly — the moment a student submits or the timer
-      expires — with live monitoring and analytics for the teacher.</p>
+      Grading happens automatically — the instant a student submits or the timer expires —
+      with live monitoring, notifications and analytics for the teacher.</p>
     <div class="hero-ctas">
-      <a class="btn light" href="login.html">Sign in / Create account</a>
-      <a class="btn outline-light" href="#demo">Try the demo accounts</a>
+      <a class="btn primary" href="login.html">Sign in / Create account</a>
+      <a class="btn" href="https://github.com/Immanuel9567/A-WEB-BASED-ONLINE-QUIZ-" target="_blank" rel="noopener">
+        <svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        View on GitHub</a>
     </div>
-  </div>
-</section>
-
-<section class="section" id="features">
-  <h2>Everything an assessment workflow needs</h2>
-  <p class="sub2">A complete prototype covering question banking, secure timed delivery,
-    automated grading and result analytics.</p>
-  <div class="container">
-    <div class="features">
-      <div class="feature"><div class="ico">⚡</div><h3>Instant auto-grading</h3>
-        <p>Single-choice, multiple-response and true/false questions are graded server-side the instant an attempt is submitted — no manual marking.</p></div>
-      <div class="feature"><div class="ico">📡</div><h3>Real-time monitoring</h3>
-        <p>Teachers watch a live session feed: who is writing, who has submitted, current scores and time remaining — refreshed every couple of seconds.</p></div>
-      <div class="feature"><div class="ico">⏱️</div><h3>Server-enforced timers</h3>
-        <p>The countdown is authoritative on the server. When time expires, the system auto-submits and grades whatever the student has answered.</p></div>
-      <div class="feature"><div class="ico">📊</div><h3>Analytics &amp; item analysis</h3>
-        <p>Score distributions, pass rates and per-question facility indices help teachers spot questions that are too easy, too hard or misleading.</p></div>
-      <div class="feature"><div class="ico">🔐</div><h3>Roles &amp; secure access</h3>
-        <p>Teacher and student accounts with hashed passwords and bearer-token sessions. Students never receive correct answers before grading.</p></div>
-      <div class="feature"><div class="ico">🛡️</div><h3>Integrity signals</h3>
-        <p>Per-attempt question shuffling, attempt limits, tab-switch logging and auto-saved answers protect the assessment's credibility.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="section alt" id="how">
-  <h2>How it works</h2>
-  <p class="sub2">Three steps from question bank to graded result sheet.</p>
-  <div class="container">
-    <div class="steps">
-      <div class="step"><div class="n">1</div><h3>Teacher builds the quiz</h3>
-        <p class="muted">Create a quiz, set duration, pass mark and attempt limits, then add questions to the question bank.</p></div>
-      <div class="step"><div class="n">2</div><h3>Students take it live</h3>
-        <p class="muted">Timed delivery with auto-saved answers, a question palette and a server-side countdown that auto-submits on expiry.</p></div>
-      <div class="step"><div class="n">3</div><h3>Results process in real time</h3>
-        <p class="muted">Scores, pass/fail verdicts, answer reviews, leaderboards and analytics update the moment attempts land.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="section" id="demo">
-  <h2>Demo accounts</h2>
-  <p class="sub2">Sign in with either account to explore both sides of the system.</p>
-  <div class="container">
-    <div class="demo-card">
-      <div class="demo-role">
-        <b>👩‍🏫 Teacher (Dr. Ada Obi)</b>
-        <span class="muted small">Create quizzes, monitor live sessions, view analytics.</span>
-        <code>teacher@demo.com&nbsp;/&nbsp;teach123</code>
-      </div>
-      <div class="demo-role">
-        <b>🎓 Student (Chidi Okafor)</b>
-        <span class="muted small">Take quizzes, see instant results &amp; leaderboard.</span>
-        <code>student@demo.com&nbsp;/&nbsp;study123</code>
-      </div>
-    </div>
-    <p class="center" style="margin-top:26px">
-      <a class="btn primary" href="login.html">Open the sign-in page →</a>
+    <p class="small muted" style="margin-top:26px">
+      Features, demo accounts, architecture and API documentation are documented in the
+      repository README for review.
     </p>
   </div>
 </section>
 
 <footer class="footer">
-  OQAS — Online Quiz &amp; Automated Assessment System with Real-Time Result Processing · prototype build · 2026
+  OQAS — Online Quiz &amp; Automated Assessment System with Real-Time Result Processing &middot; prototype &middot; 2026
 </footer>
 
 </body>

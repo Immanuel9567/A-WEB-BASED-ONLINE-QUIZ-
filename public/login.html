@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — OQAS</title>
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   .authwrap { min-height: calc(100vh - 62px); display: flex; align-items: center; justify-content: center; padding: 30px 16px; }
   .authcard { width: 100%; max-width: 430px; }
@@ -19,10 +19,10 @@
 <header class="topnav">
   <div class="container navrow">
     <a class="brand" href="index.html">
-      <svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="url(#lg)"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs></svg>
+      <svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>OQAS</span>
     </a>
-    <div class="navuser"><a class="btn ghost sm" href="index.html">← Back home</a></div>
+    <div class="navuser"><a class="btn ghost sm" href="index.html" id="backHome">Back home</a></div>
   </div>
 </header>
 
@@ -30,7 +30,7 @@
   <div class="authcard">
     <div class="card" style="padding:28px">
       <div class="brand">
-        <svg width="34" height="34" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="url(#lg2)"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs></svg>
+        <svg width="34" height="34" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
 
       <div class="segment" style="margin-bottom:20px">
@@ -48,12 +48,12 @@
         </div>
         <div class="field">
           <label for="liPw">Password</label>
-          <input id="liPw" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          <input id="liPw" type="password" autocomplete="current-password" placeholder="Your password" required>
         </div>
         <button class="btn primary block" id="liBtn" type="submit">Sign in</button>
         <div class="demoquick">
-          <button class="btn sm" type="button" id="fillStudent">🎓 Demo student</button>
-          <button class="btn sm" type="button" id="fillTeacher">👩‍🏫 Demo teacher</button>
+          <button class="btn sm" type="button" id="fillStudent"></button>
+          <button class="btn sm" type="button" id="fillTeacher"></button>
         </div>
       </form>
 
@@ -75,8 +75,8 @@
         <div class="field">
           <label>I am a</label>
           <div class="segment">
-            <button type="button" id="roleStudent" class="on">🎓 Student</button>
-            <button type="button" id="roleTeacher">👩‍🏫 Teacher</button>
+            <button type="button" id="roleStudent" class="on"></button>
+            <button type="button" id="roleTeacher"></button>
           </div>
           <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
         </div>
@@ -93,11 +93,18 @@
 <script>
 (function () {
   'use strict';
+  // icon-labelled buttons (uniform pack from app.js)
+  document.getElementById('fillStudent').innerHTML = icon('bookOpen', 15) + ' Demo student';
+  document.getElementById('fillTeacher').innerHTML = icon('presentation', 15) + ' Demo teacher';
+  document.getElementById('roleStudent').innerHTML = icon('bookOpen', 15) + ' Student';
+  document.getElementById('roleTeacher').innerHTML = icon('presentation', 15) + ' Teacher';
+  document.getElementById('backHome').innerHTML = icon('arrowLeft', 15) + ' Back home';
+
   var role = 'student';
   var errBox = document.getElementById('errBox');
 
   function showErr(msg) {
-    errBox.textContent = msg;
+    errBox.innerHTML = icon('alertCircle', 16) + '<span>' + esc(msg) + '</span>';
     errBox.hidden = false;
   }
   function clearErr() { errBox.hidden = true; }

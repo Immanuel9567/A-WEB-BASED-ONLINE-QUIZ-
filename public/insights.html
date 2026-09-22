@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Insights &amp; live monitor — OQAS</title>
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 </head>
 <body>
 <div id="nav"></div>
@@ -16,7 +16,7 @@
       <h1 id="iTitle">Insights</h1>
       <p class="sub" id="iMeta">Loading…</p>
     </div>
-    <a class="btn" href="teacher.html">← Quizzes</a>
+    <a class="btn" href="teacher.html" id="backLink"></a>
   </section>
 
   <div class="tabs">
@@ -50,7 +50,7 @@
     <div class="row" style="margin-bottom:14px">
       <span class="muted small">All graded attempts for this quiz, newest first.</span>
       <span class="spacer"></span>
-      <button class="btn sm" id="csvBtn">⬇ Export CSV</button>
+      <button class="btn sm" id="csvBtn"></button>
     </div>
     <section class="card tablecard">
       <table>
@@ -83,7 +83,7 @@
       </table>
     </section>
     <p class="small muted" style="margin:10px 2px 0">
-      Facility index = fraction of candidates who answered correctly. ≥70% easy · 40–69% moderate · &lt;40% hard.
+      Facility index = fraction of candidates who answered correctly. 70% and above is easy, 40–69% moderate, below 40% hard.
     </p>
 
     <h2 class="sec">Leaderboard (best attempt per student)</h2>
@@ -100,6 +100,8 @@
 (async function () {
   var user = await requireLogin('teacher');
   navbar(user, 'dashboard');
+  document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + ' Quizzes';
+  document.getElementById('csvBtn').innerHTML = icon('download', 14) + ' Export CSV';
 
   var quizId = new URLSearchParams(location.search).get('id');
   if (!quizId) { location.href = 'teacher.html'; return; }
@@ -133,15 +135,16 @@
 
       var s = mon.summary;
       document.getElementById('monSummary').innerHTML =
-        pill('👥 ' + s.total + ' attempts', 'info') +
-        pill('✍️ ' + s.inProgress + ' writing now', s.inProgress ? 'ok' : '') +
-        pill('✅ ' + s.submitted + ' submitted', '') +
-        pill('⏰ ' + s.expired + ' expired', s.expired ? 'warn' : '') +
-        pill('📊 avg ' + fmtPct(s.avgPercent), 'info');
+        pill(icon('users', 14) + ' ' + s.total + ' attempts', '') +
+        pill(icon('activity', 14) + ' ' + s.inProgress + ' writing now', s.inProgress ? 'accent' : '') +
+        pill(icon('checkCircle', 14) + ' ' + s.submitted + ' submitted', '') +
+        pill(icon('clock', 14) + ' ' + s.expired + ' expired', '') +
+        pill(icon('barChart', 14) + ' avg ' + fmtPct(s.avgPercent), '');
 
       var tb = document.getElementById('monRows');
       if (!mon.rows.length) {
-        tb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="big">👀</div>No attempts yet — waiting for students to start.</div></td></tr>';
+        tb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('eye', 34) + '</div>' +
+          'No attempts yet — waiting for students to start.</div></td></tr>';
       } else {
         tb.innerHTML = mon.rows.map(monRow).join('');
       }
@@ -153,7 +156,7 @@
       } else ns.hidden = true;
     } catch (err) {
       document.getElementById('monRows').innerHTML =
-        '<tr><td colspan="7" class="muted">⚠ ' + esc(err.message) + '</td></tr>';
+        '<tr><td colspan="7" class="muted">' + esc(err.message) + '</td></tr>';
     }
   }
 
@@ -168,8 +171,8 @@
       : '<span class="small muted">' + fmtDur(r.durationUsedSec) + ' used</span>';
     var score = r.score ? '<b class="mono">' + r.score + '</b>' : '—';
     var outcome = r.status !== 'in_progress'
-      ? (r.passed ? '<span class="badge ok">' + fmtPct(r.percent) + '</span>' : '<span class="badge bad">' + fmtPct(r.percent) + '</span>')
-      : (r.tabSwitches ? '<span class="badge warn">⚠ ' + r.tabSwitches + ' switches</span>' : '<span class="muted">—</span>');
+      ? '<span class="badge ' + (r.passed ? 'ok' : 'bad') + '">' + fmtPct(r.percent) + '</span>'
+      : (r.tabSwitches ? '<span class="badge warn">' + r.tabSwitches + ' switches</span>' : '<span class="muted">—</span>');
     return '<tr>' +
       '<td><b>' + esc(r.student) + '</b></td>' +
       '<td>' + statusBadge + '</td>' +
@@ -187,7 +190,7 @@
     if (document.hidden) stopMon(); else if (active === 'monitor') startMon();
   });
 
-  function pill(text, cls) { return '<span class="chip ' + (cls || '') + '">' + text + '</span>'; }
+  function pill(html, accent) { return '<span class="chip"' + (accent ? ' style="background:#e8f0fe;color:#174ea6"' : '') + '>' + html + '</span>'; }
 
   /* ================= RESULTS + CSV ================= */
   async function loadResults() {
@@ -198,7 +201,8 @@
       document.getElementById('iMeta').textContent = r.quiz.subject + ' · graded attempts: ' + r.rows.length;
       var tb = document.getElementById('resRows');
       if (!r.rows.length) {
-        tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="big">🗂️</div>No graded attempts yet.</div></td></tr>';
+        tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('inbox', 34) + '</div>' +
+          'No graded attempts yet.</div></td></tr>';
         return;
       }
       tb.innerHTML = r.rows.map(function (a) {
@@ -206,7 +210,7 @@
           '<td><b>' + esc(a.student) + '</b></td>' +
           '<td class="mono">' + a.score + '/' + a.maxScore + '</td>' +
           '<td><b>' + fmtPct(a.percent) + '</b></td>' +
-          '<td>' + (a.passed ? '<span class="badge ok">Pass</span>' : '<span class="badge bad">Fail</span>') + '</td>' +
+          '<td><span class="badge ' + (a.passed ? 'ok' : 'bad') + '">' + (a.passed ? 'Pass' : 'Fail') + '</span></td>' +
           '<td>' + fmtDur(a.durationUsedSec) + '</td>' +
           '<td>' + (a.tabSwitches ? '<span class="badge warn">' + a.tabSwitches + '</span>' : '—') + '</td>' +
           '<td class="small muted">' + fmtWhen(a.submittedAt) + (a.status === 'expired' ? ' <span class="badge warn">expired</span>' : '') + '</td>' +
@@ -233,7 +237,6 @@
   };
 
   /* ================= ANALYTICS ================= */
-  var anLoaded = false;
   async function loadAnalytics() {
     try {
       var r = await GET('/api/quizzes/' + quizId + '/analytics');
@@ -276,17 +279,15 @@
         }).join('');
       }
 
-      var medals = ['🥇', '🥈', '🥉'];
       document.getElementById('anLb').innerHTML = r.leaderboard.length
         ? r.leaderboard.map(function (x, i) {
-            return '<li><span class="rank">' + (medals[i] || (i + 1)) + '</span>' +
+            return '<li><span class="rank">' + (i + 1) + '</span>' +
               '<span class="who">' + esc(x.name) + '</span>' +
               '<span class="chip">' + x.score + '/' + x.maxScore + '</span>' +
               '<span class="chip">' + fmtDur(x.durationUsedSec) + '</span>' +
               '<span class="sc">' + fmtPct(x.percent) + '</span></li>';
           }).join('')
         : '<li class="muted">No graded attempts yet.</li>';
-      anLoaded = true;
     } catch (err) { toast(err.message, 'bad'); }
   }
 

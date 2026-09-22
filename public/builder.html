@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Question bank — OQAS</title>
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 </head>
 <body>
 <div id="nav"></div>
@@ -17,15 +17,39 @@
       <p class="sub" id="qzMeta">Loading…</p>
     </div>
     <div class="row">
-      <a class="btn" href="teacher.html">← Quizzes</a>
-      <a class="btn primary" id="insightsLink" href="#">📈 Insights</a>
+      <a class="btn" href="teacher.html" id="backLink"></a>
+      <a class="btn primary" id="insightsLink" href="#"></a>
       <button class="btn" id="pubBtn"></button>
     </div>
   </section>
 
   <div class="twocol">
-    <!-- ============ question list ============ -->
+    <!-- ============ left: settings + question list ============ -->
     <section>
+      <div class="card tight" style="margin-bottom:16px">
+        <div class="row" style="margin-bottom:6px">
+          <span class="ic" style="color:#1a73e8"></span><b style="font-size:14.5px">Security &amp; delivery kit</b>
+        </div>
+        <div class="setrow">
+          <label class="sw"><input type="checkbox" id="setShuffle"><i></i></label>
+          <div class="stxt"><b>Shuffle questions per student</b><span>Different order for each candidate.</span></div>
+        </div>
+        <div class="setrow">
+          <label class="sw"><input type="checkbox" id="setShuffleOpt"><i></i></label>
+          <div class="stxt"><b>Shuffle answer options</b><span>Answer positions can't be copied.</span></div>
+        </div>
+        <div class="setrow">
+          <div class="stxt" style="flex:1"><b>Tab-switch policy</b><span>What happens if a candidate leaves the quiz tab.</span>
+            <select id="setTab" style="margin-top:7px">
+              <option value="warn">Warn &amp; log (recommended)</option>
+              <option value="autosubmit">Auto-submit quiz</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn sm primary block" id="saveSettings" style="margin-top:10px"></button>
+      </div>
+
       <div class="card" style="position:sticky;top:80px">
         <div class="row" style="margin-bottom:12px">
           <b style="font-size:15px">Questions</b>
@@ -36,9 +60,10 @@
       </div>
     </section>
 
-    <!-- ============ editor form ============ -->
+    <!-- ============ right: question editor ============ -->
     <section class="card">
-      <h3 id="formTitle" style="font-size:17px">➕ Add a new question</h3>
+      <h3 id="formTitle" style="font-size:17px">Add a new question</h3>
+      <p class="small muted" id="draftNote" hidden></p>
       <div class="form-err" id="formErr" hidden></div>
 
       <div class="field">
@@ -56,15 +81,15 @@
       </div>
 
       <div id="optsWrap">
-        <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:7px;color:#374151">
-          Options — click the ✓ circle to mark the correct one(s)
+        <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:7px;color:#3c4043">
+          Options — click the check circle to mark the correct one(s)
         </label>
         <div id="optRows"></div>
-        <button class="btn sm" id="addOptBtn" type="button">＋ Add option</button>
+        <button class="btn sm" id="addOptBtn" type="button"></button>
       </div>
 
       <div id="tfWrap" hidden>
-        <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:7px;color:#374151">Correct answer</label>
+        <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:7px;color:#3c4043">Correct answer</label>
         <div class="segment" style="max-width:220px">
           <button type="button" id="tfTrue" class="on">True</button>
           <button type="button" id="tfFalse">False</button>
@@ -83,10 +108,14 @@
       </div>
 
       <div class="row">
+        <button class="btn" id="resetBtn" type="button" hidden></button>
         <span class="spacer"></span>
-        <button class="btn" id="resetBtn" type="button" hidden>Cancel edit</button>
+        <button class="btn" id="saveDraftBtn" type="button"></button>
         <button class="btn primary" id="saveBtn" type="button">Save question</button>
       </div>
+      <p class="small muted" style="margin:12px 0 0">
+        Drafts are saved to the question bank but are never shown to students until you complete and save them properly.
+      </p>
     </section>
   </div>
   <p style="margin:26px 2px 50px"></p>
@@ -101,6 +130,14 @@
   var quizId = new URLSearchParams(location.search).get('id');
   if (!quizId) { location.href = 'teacher.html'; return; }
 
+  document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + ' Quizzes';
+  document.getElementById('insightsLink').innerHTML = icon('barChart', 15) + ' Insights';
+  document.getElementById('saveSettings').innerHTML = icon('save', 14) + ' Save settings';
+  document.getElementById('addOptBtn').innerHTML = icon('plus', 14) + ' Add option';
+  document.getElementById('saveDraftBtn').innerHTML = icon('fileText', 14) + ' Save as draft';
+  document.getElementById('resetBtn').innerHTML = icon('x', 14) + ' Cancel edit';
+  $('#backLink').href = 'teacher.html';
+
   var data;
   try { data = await GET('/api/quizzes/' + quizId + '/questions'); }
   catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = 'teacher.html'; }, 1200); return; }
@@ -113,9 +150,10 @@
     (quiz.published ? 'published' : 'draft');
   document.getElementById('insightsLink').href = 'insights.html?id=' + quizId;
 
+  /* ================= publish toggle ================= */
   var pubBtn = document.getElementById('pubBtn');
   function paintPub() {
-    pubBtn.textContent = quiz.published ? '🌐 Unpublish' : '🚀 Publish';
+    pubBtn.innerHTML = quiz.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish';
   }
   pubBtn.onclick = async function () {
     pubBtn.disabled = true;
@@ -129,39 +167,72 @@
   };
   paintPub();
 
-  /* ================= list ================= */
+  /* ================= security & delivery kit ================= */
+  var setShuffle = document.getElementById('setShuffle');
+  var setShuffleOpt = document.getElementById('setShuffleOpt');
+  var setTab = document.getElementById('setTab');
+  setShuffle.checked = !!quiz.shuffle;
+  setShuffleOpt.checked = !!quiz.shuffleOptions;
+  setTab.value = quiz.tabSwitchPolicy || 'warn';
+  document.getElementById('saveSettings').onclick = async function () {
+    this.disabled = true;
+    try {
+      await PUT('/api/quizzes/' + quizId, {
+        shuffle: setShuffle.checked,
+        shuffleOptions: setShuffleOpt.checked,
+        tabSwitchPolicy: setTab.value
+      });
+      toast('Security settings saved');
+    } catch (err) { toast(err.message, 'bad'); }
+    this.disabled = false;
+  };
+
+  /* ================= question list ================= */
   var TYPE_LABEL = { single: 'Single choice', multiple: 'Multiple response', truefalse: 'True / False' };
   function renderList() {
-    document.getElementById('qCount').textContent = questions.length + ' question' + (questions.length === 1 ? '' : 's');
+    var drafts = questions.filter(function (q) { return q.draft; });
+    var live = questions.filter(function (q) { return !q.draft; });
+    document.getElementById('qCount').textContent =
+      live.length + ' live' + (drafts.length ? ' · ' + drafts.length + ' draft' + (drafts.length > 1 ? 's' : '') : '');
     var el = document.getElementById('qlist');
     if (!questions.length) {
-      el.innerHTML = '<p class="muted small" style="padding:14px 4px">No questions yet. Use the form to add the first one. ➡️</p>';
+      el.innerHTML = '<p class="muted small" style="padding:14px 4px">No questions yet. Use the form to add the first one.</p>';
       return;
     }
     el.innerHTML = questions.map(function (q, i) {
-      var opts = (q.options || []).map(function (o, oi) {
-        var correct = q.type === 'multiple' ? q.answer.indexOf(oi) >= 0 : q.answer === oi;
-        return '<div class="oo' + (correct ? ' correct' : '') + '">' + LETTER(oi) + '. ' + esc(o) + '</div>';
-      }).join('');
-      return '<div class="qmini">' +
+      var opts = q.draft ? '<div class="oo muted">Incomplete — finish before it goes live</div>'
+        : (q.options || []).map(function (o, oi) {
+            var correct = q.type === 'multiple' ? q.answer.indexOf(oi) >= 0 : q.answer === oi;
+            return '<div class="oo' + (correct ? ' correct' : '') + '">' + LETTER(oi) + '. ' + esc(o) + '</div>';
+          }).join('');
+      return '<div class="qmini' + (q.draft ? ' isdraft' : '') + '">' +
         '<div class="row" style="margin-bottom:7px">' +
-        '<span class="chip">' + (i + 1) + '</span><span class="chip info">' + TYPE_LABEL[q.type] + '</span>' +
+        '<span class="chip">' + (i + 1) + '</span>' +
+        '<span class="chip">' + TYPE_LABEL[q.type] + '</span>' +
         '<span class="chip">' + q.points + ' pt' + (q.points > 1 ? 's' : '') + '</span>' +
+        (q.draft ? '<span class="badge warn">Draft</span>' : '') +
         '<span class="spacer"></span>' +
-        '<button class="btn sm" data-edit="' + q.id + '">Edit</button>' +
-        '<button class="btn sm danger" data-rm="' + q.id + '">✕</button>' +
-        '</div><div class="qq">' + esc(q.text) + '</div>' + opts + '</div>';
+        (q.draft ? '<button class="btn sm primary" data-finish="' + q.id + '">Finish</button>' : '') +
+        '<button class="btn sm" data-edit="' + q.id + '">' + icon('edit', 13) + '</button>' +
+        '<button class="btn sm danger" data-rm="' + q.id + '">' + icon('trash', 13) + '</button>' +
+        '</div><div class="qq">' + (q.text ? esc(q.text) : '<i class="muted">(untitled draft)</i>') + '</div>' + opts + '</div>';
     }).join('');
 
     $$('[data-edit]', el).forEach(function (b) {
       b.onclick = function () { startEdit(questions.find(function (q) { return q.id === b.getAttribute('data-edit'); })); };
+    });
+    $$('[data-finish]', el).forEach(function (b) {
+      b.onclick = function () {
+        startEdit(questions.find(function (q) { return q.id === b.getAttribute('data-finish'); }));
+        toast('Complete the details, then press "Save question" to make it live', 'info');
+      };
     });
     $$('[data-rm]', el).forEach(function (b) {
       b.onclick = async function () {
         var q = questions.find(function (x) { return x.id === b.getAttribute('data-rm'); });
         var ok = await confirmModal({
           title: 'Delete this question?',
-          body: '“' + esc(q.text.slice(0, 90)) + '”',
+          body: '"' + esc((q.text || 'untitled draft').slice(0, 90)) + '"',
           okText: 'Delete', danger: true
         });
         if (!ok) return;
@@ -176,13 +247,14 @@
   }
 
   /* ================= editor ================= */
-  var editingId = null;
+  var editingId = null, editingDraft = false;
   var fType = document.getElementById('fType');
   var fText = document.getElementById('fText');
   var fPoints = document.getElementById('fPoints');
   var fExpl = document.getElementById('fExpl');
   var optRows = document.getElementById('optRows');
   var tfAnswer = 0;
+  var formKey = 'oqas_qform_' + quizId;
 
   document.getElementById('tfTrue').onclick = function () {
     tfAnswer = 0; this.classList.add('on'); document.getElementById('tfFalse').classList.remove('on');
@@ -191,7 +263,7 @@
     tfAnswer = 1; this.classList.add('on'); document.getElementById('tfTrue').classList.remove('on');
   };
 
-  fType.onchange = function () { syncTypeUI(); };
+  fType.onchange = function () { syncTypeUI(); autosaveForm(); };
 
   function syncTypeUI() {
     var tf = fType.value === 'truefalse';
@@ -199,127 +271,198 @@
     document.getElementById('tfWrap').hidden = !tf;
   }
 
-  function optRowHtml(text, correct) {
-    return '<div class="optrow">' +
-      '<button type="button" class="markbtn' + (correct ? ' on' : '') + '" title="Mark correct">✓</button>' +
-      '<input type="text" class="optinput" placeholder="Option text" value="' + esc(text || '') + '">' +
-      '<button type="button" class="btn sm ghost rmopt" title="Remove">✕</button>' +
-      '</div>';
-  }
-
   function addOptRow(text, correct) {
     if ($$('.optrow').length >= 6) { toast('Maximum 6 options', 'bad'); return; }
-    optRows.insertAdjacentHTML('beforeend', optRowHtml(text, correct));
+    optRows.insertAdjacentHTML('beforeend',
+      '<div class="optrow">' +
+      '<button type="button" class="markbtn' + (correct ? ' on' : '') + '" title="Mark correct">' + icon('check', 17) + '</button>' +
+      '<input type="text" class="optinput" placeholder="Option text" value="' + esc(text || '') + '">' +
+      '<button type="button" class="btn sm ghost rmopt" title="Remove">' + icon('x', 14) + '</button>' +
+      '</div>');
     var row = optRows.lastElementChild;
     row.querySelector('.markbtn').onclick = function () {
       if (fType.value === 'single') $$('.markbtn').forEach(function (b) { b.classList.remove('on'); });
       this.classList.toggle('on');
+      autosaveForm();
     };
     row.querySelector('.rmopt').onclick = function () {
       if ($$('.optrow').length <= 2) { toast('Minimum 2 options', 'bad'); return; }
       row.remove();
+      autosaveForm();
     };
+    row.querySelector('.optinput').oninput = autosaveForm;
   }
-  document.getElementById('addOptBtn').onclick = function () { addOptRow('', false); };
+  document.getElementById('addOptBtn').onclick = function () { addOptRow('', false); autosaveForm(); };
+
+  /* ---- form autosave: never lose a half-written question ---- */
+  var asTimer = null;
+  function autosaveForm() {
+    clearTimeout(asTimer);
+    asTimer = setTimeout(function () {
+      try {
+        Store.setItem(formKey, JSON.stringify({
+          type: fType.value, text: fText.value, points: fPoints.value, expl: fExpl.value,
+          tf: tfAnswer,
+          opts: $$('.optrow').map(function (r) {
+            return {
+              v: r.querySelector('.optinput').value,
+              c: r.querySelector('.markbtn').classList.contains('on')
+            };
+          })
+        }));
+      } catch (e) {}
+    }, 400);
+  }
+  fText.oninput = autosaveForm;
+  fPoints.oninput = autosaveForm;
+  fExpl.oninput = autosaveForm;
+
+  function restoreForm() {
+    var raw = null;
+    try { raw = Store.getItem(formKey); } catch (e) {}
+    if (!raw) return;
+    try {
+      var f = JSON.parse(raw);
+      if (!f || (!f.text && !f.opts)) return;
+      fType.value = f.type || 'single';
+      fText.value = f.text || '';
+      fPoints.value = f.points || 1;
+      fExpl.value = f.expl || '';
+      if (f.tf === 1) document.getElementById('tfFalse').click();
+      else document.getElementById('tfTrue').click();
+      optRows.innerHTML = '';
+      (f.opts && f.opts.length ? f.opts : [{}, {}, {}, {}]).forEach(function (o) { addOptRow(o.v, o.c); });
+      syncTypeUI();
+      document.getElementById('draftNote').hidden = false;
+      document.getElementById('draftNote').textContent = 'Unsaved question restored — press Save to keep it, or the X button to discard.';
+    } catch (e) {}
+  }
+  function clearAutosave() { try { Store.removeItem(formKey); } catch (e) {} }
 
   function resetForm() {
-    editingId = null;
-    document.getElementById('formTitle').textContent = '➕ Add a new question';
+    editingId = null; editingDraft = false;
+    document.getElementById('formTitle').textContent = 'Add a new question';
     document.getElementById('resetBtn').hidden = true;
+    document.getElementById('draftNote').hidden = true;
     fType.value = 'single'; fText.value = ''; fPoints.value = 1; fExpl.value = '';
     optRows.innerHTML = '';
     addOptRow('', false); addOptRow('', false); addOptRow('', false); addOptRow('', false);
     document.getElementById('tfTrue').click();
     document.getElementById('formErr').hidden = true;
+    clearAutosave();
     syncTypeUI();
   }
 
   function startEdit(q) {
     editingId = q.id;
-    document.getElementById('formTitle').textContent = '✏️ Editing question';
+    editingDraft = !!q.draft;
+    document.getElementById('formTitle').textContent = q.draft ? 'Finish draft question' : 'Editing question';
     document.getElementById('resetBtn').hidden = false;
+    if (q.draft) {
+      document.getElementById('draftNote').hidden = false;
+      document.getElementById('draftNote').textContent = 'This question is a draft — complete it and press "Save question" to make it live for students.';
+    } else {
+      document.getElementById('draftNote').hidden = true;
+    }
     fType.value = q.type;
-    fText.value = q.text;
+    fText.value = q.text || '';
     fPoints.value = q.points;
     fExpl.value = q.explanation || '';
     optRows.innerHTML = '';
     if (q.type === 'truefalse') {
-      if (q.answer === 0) document.getElementById('tfTrue').click();
+      if (q.answer === 0 || q.answer === null) document.getElementById('tfTrue').click();
       else document.getElementById('tfFalse').click();
     } else {
-      (q.options || []).forEach(function (o, oi) {
-        var correct = q.type === 'multiple' ? q.answer.indexOf(oi) >= 0 : q.answer === oi;
+      (q.options && q.options.length ? q.options : ['', '']).forEach(function (o, oi) {
+        var correct = q.type === 'multiple'
+          ? (Array.isArray(q.answer) && q.answer.indexOf(oi) >= 0)
+          : q.answer === oi;
         addOptRow(o, correct);
       });
     }
     document.getElementById('formErr').hidden = true;
+    clearAutosave();
     syncTypeUI();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   document.getElementById('resetBtn').onclick = resetForm;
 
-  document.getElementById('saveBtn').onclick = async function () {
+  function collect() {
+    var rows = $$('.optrow');
+    return {
+      type: fType.value,
+      text: fText.value,
+      opts: rows.map(function (r) { return r.querySelector('.optinput').value.trim(); }),
+      marked: rows.map(function (r) { return r.querySelector('.markbtn').classList.contains('on'); })
+    };
+  }
+
+  function saveQuestion(asDraft) {
     var errBox = document.getElementById('formErr');
     errBox.hidden = true;
-    var type = fType.value;
+    var c = collect();
+    var answer = c.type === 'truefalse' ? tfAnswer
+      : c.type === 'single' ? c.marked.indexOf(true)
+      : c.marked.map(function (m, i) { return m ? i : -1; }).filter(function (i) { return i >= 0; });
 
-    // client-side validation: no empty options, at least 2, correct marked
-    var rows = $$('.optrow');
-    var opts = rows.map(function (r) { return r.querySelector('.optinput').value.trim(); });
-    var marked = rows.map(function (r) { return r.querySelector('.markbtn').classList.contains('on'); });
-    if (type !== 'truefalse') {
-      if (opts.length < 2) { return showFormErr('Provide at least 2 options.'); }
-      if (opts.some(function (o) { return !o; })) { return showFormErr('Option text cannot be empty — remove unused option rows.'); }
-      if (type === 'single' && marked.indexOf(true) < 0) { return showFormErr('Click the ✓ circle next to the correct option.'); }
-      if (type === 'multiple' && !marked.some(Boolean)) { return showFormErr('Mark at least one correct option with ✓.'); }
+    if (!asDraft) {
+      if (!c.text.trim()) return showFormErr('Question text cannot be empty.');
+      if (c.type !== 'truefalse') {
+        if (c.opts.length < 2) return showFormErr('Provide at least 2 options.');
+        if (c.opts.some(function (o) { return !o; })) return showFormErr('Option text cannot be empty — remove unused option rows.');
+        if (c.type === 'single' && answer < 0) return showFormErr('Click the check circle next to the correct option.');
+        if (c.type === 'multiple' && !answer.length) return showFormErr('Mark at least one correct option with the check circle.');
+      }
+    } else if (!c.text.trim() && !c.opts.some(Boolean)) {
+      return showFormErr('Add at least a question text or some options to save a draft.');
     }
-    if (!fText.value.trim()) { return showFormErr('Question text cannot be empty.'); }
-
-    var answer = type === 'truefalse' ? tfAnswer
-      : type === 'single' ? marked.indexOf(true)
-      : marked.map(function (m, i) { return m ? i : -1; }).filter(function (i) { return i >= 0; });
-
 
     var payload = {
       id: editingId || undefined,
-      type: type,
-      text: fText.value,
-      options: opts,
+      type: c.type,
+      text: c.text,
+      options: c.opts,
       answer: answer,
       points: Number(fPoints.value) || 1,
-      explanation: fExpl.value
+      explanation: fExpl.value,
+      draft: !!asDraft
     };
-    var btn = this;
+    var btn = asDraft ? document.getElementById('saveDraftBtn') : document.getElementById('saveBtn');
     btn.disabled = true; btn.textContent = 'Saving…';
-    try {
-      if (editingId) {
-        var r = await PUT('/api/questions/' + editingId, payload);
-        var i = questions.findIndex(function (q) { return q.id === editingId; });
-        questions[i] = r.question;
-        toast('Question updated');
-      } else {
-        var r2 = await POST('/api/quizzes/' + quizId + '/questions', payload);
-        questions.push(r2.question);
-        toast('Question added');
+    (async function () {
+      try {
+        if (editingId) {
+          var r = await PUT('/api/questions/' + editingId, payload);
+          var i = questions.findIndex(function (q) { return q.id === editingId; });
+          questions[i] = r.question;
+          toast(asDraft ? 'Draft updated' : 'Question updated');
+        } else {
+          var r2 = await POST('/api/quizzes/' + quizId + '/questions', payload);
+          questions.push(r2.question);
+          toast(asDraft ? 'Draft saved — finish it any time' : 'Question added');
+        }
+        resetForm();
+        renderList();
+      } catch (err) {
+        showFormErr(err.message);
       }
-      resetForm();
-      renderList();
-    } catch (err) {
-      errBox.textContent = err.message;
-      errBox.hidden = false;
-    }
-    btn.disabled = false; btn.textContent = 'Save question';
-  };
+      btn.disabled = false;
+      btn.textContent = asDraft ? 'Save as draft' : 'Save question';
+    })();
+  }
+
+  document.getElementById('saveBtn').onclick = function () { saveQuestion(false); };
+  document.getElementById('saveDraftBtn').onclick = function () { saveQuestion(true); };
 
   function showFormErr(msg) {
     var errBox = document.getElementById('formErr');
-    errBox.textContent = msg;
+    errBox.innerHTML = icon('alertCircle', 16) + '<span>' + esc(msg) + '</span>';
     errBox.hidden = false;
     return false;
   }
 
-  resetForm();
+  restoreForm();
   renderList();
 })().catch(function () {});
 </script>
