@@ -22,7 +22,7 @@ const PORT          = Number(process.env.PORT || 3000);
 const PUB           = path.join(__dirname, 'public');
 const DB_FILE       = path.join(__dirname, 'data', 'db.json');
 const GRACE_MS      = 15000;                 // network grace window after timer ends
-const SESSION_TTL   = 7 * 24 * 3600 * 1000;  // one week
+const SESSION_TTL   = 90 * 24 * 3600 * 1000; // 90 days — persistent logins
 
 /* ---------------------------------------------------------------- utilities */
 const uid    = (p) => p + '_' + crypto.randomBytes(6).toString('hex');
@@ -890,6 +890,9 @@ route('POST', '/api/admin/import', async ({ user, req, body, res }) => {
   // keep the importing teacher signed in after the swap
   const m = String(req.headers['authorization'] || '').match(/^Bearer (.+)$/);
   if (m && db.users.some((u) => u.id === user.id)) db.sessions[m[1]] = { userId: user.id, createdAt: now() };
+  for (const k of Object.keys(db.sessions)) {
+    if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
+  }
   saveDb();
   send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
 });
@@ -902,7 +905,7 @@ function applyDbData(b) { // swap in a validated database (sessions handled by c
     attempts: b.attempts,
     notifications: Array.isArray(b.notifications) ? b.notifications : [],
     classes: Array.isArray(b.classes) ? b.classes : [],
-    sessions: {}
+    sessions: (b.sessions && typeof b.sessions === 'object' && !Array.isArray(b.sessions)) ? b.sessions : {}
   };
 }
 
@@ -952,7 +955,7 @@ route('DELETE', '/api/notifications', async ({ user, res }) => {
 
 
 /* ======== PROFILE (self-service editing) ======== */
-route('PUT', '/api/auth/profile', async ({ user, body, res }) => {
+route('PUT', '/api/auth/profile', async ({ user, body, req, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   const name = String(body.name || '').trim();
   const email = String(body.email || '').trim().toLowerCase();
@@ -972,6 +975,11 @@ route('PUT', '/api/auth/profile', async ({ user, body, res }) => {
     const salt = crypto.randomBytes(8).toString('hex');
     user.salt = salt;
     user.pass = hashPw(newPw, salt);
+    // a password change signs out every other device; this one stays signed in
+    const keepTok = String(req.headers['authorization'] || '').match(/^Bearer (.+)$/);
+    for (const k of Object.keys(db.sessions)) {
+      if (db.sessions[k].userId === user.id && (!keepTok || k !== keepTok[1])) delete db.sessions[k];
+    }
   }
   saveDb();
   send(res, 200, { user: publicUser(user), emailChanged, passwordChanged: !!newPw });
@@ -1173,7 +1181,7 @@ async function cloudSaveNow() {
   cloudState.saving = true;
   try {
     await ensureCloudBranch(cloudCfg.token);
-    const payload = cloudEncrypt(Object.assign({}, db, { sessions: {} }), cloudCfg.passphrase);
+    const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive restarts
     const content = Buffer.from(JSON.stringify(payload, null, 1)).toString('base64');
     const g = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
     const body = { message: 'ClassMark cloud save ' + new Date().toISOString(), branch: CLOUD_BRANCH, content };
@@ -1273,7 +1281,7 @@ route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
   cloudSuppress++;
   try {
     applyDbData(data);
-    db.sessions = keepSessions;
+    db.sessions = Object.assign({}, db.sessions, keepSessions); // backup sessions + live ones
     for (const k of Object.keys(db.sessions)) {
       if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
     }
@@ -1304,10 +1312,15 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
     const ids = new Set(data.users.map((u) => u.id));
     const rescue = db.users.filter((u) => !ids.has(u.id));
     if (rescue.length) data.users = data.users.concat(rescue);
+    const localSessions = db.sessions;
     cloudSuppress++;
     try {
       applyDbData(data);
-      db.sessions = {}; // fresh boot - everyone signs in again
+      // persistent logins: keep the backup's sessions and the local ones
+      db.sessions = Object.assign({}, db.sessions, localSessions);
+      for (const k of Object.keys(db.sessions)) {
+        if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
+      }
       saveDb();
     } finally { cloudSuppress--; }
     console.log('cloud: restored ' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes, ' + db.attempts.length + ' attempts' +

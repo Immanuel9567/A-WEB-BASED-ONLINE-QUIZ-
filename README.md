@@ -302,6 +302,11 @@ runs 1.5 s after every other change, a pending save is **flushed on server shutd
 startup the server reconciles local vs cloud (the newer side wins, and any account that exists
 only locally is rescued) — so a restart can no longer lose a just-created account.
 
+**Persistent sign-ins**: sessions live for **90 days** and are included in the (encrypted)
+cloud backup, so a server restart, redeploy or host sleep/wake cycle never signs anybody out —
+refreshing the page keeps you logged in. Logging out, or changing your password, signs that
+account out everywhere (a password change keeps only the device you changed it on signed in).
+
 Recovering on a fresh server: set the same token + passphrase (environment variables or
 `data/cloud.json`) and start the server — startup pulls the data automatically.
 
