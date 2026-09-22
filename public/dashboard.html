@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student dashboard — OQAS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="nav"></div>
+
+<main class="container">
+  <section class="pagehead">
+    <div>
+      <h1>Student dashboard</h1>
+      <p class="sub" id="welcome">Loading…</p>
+    </div>
+  </section>
+
+  <section class="statgrid" id="stats"></section>
+
+  <h2 class="sec">Available quizzes</h2>
+  <section class="quizgrid" id="quizzes">
+    <div class="card skeleton">Loading quizzes…</div>
+  </section>
+
+  <h2 class="sec">My results</h2>
+  <section class="card tablecard">
+    <table>
+      <thead><tr><th>Quiz</th><th>Score</th><th>Percent</th><th>Outcome</th><th>Time used</th><th>Submitted</th><th></th></tr></thead>
+      <tbody id="results"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <h2 class="sec">Top performers</h2>
+  <section class="card" style="max-width:640px">
+    <ol class="lb" id="leaderboard"><li class="muted">Loading…</li></ol>
+  </section>
+  <p class="small muted" style="margin:10px 2px 40px">Ranked by average of your best score on each quiz taken.</p>
+</main>
+
+<script src="js/app.js"></script>
+<script>
+(async function () {
+  var user = await requireLogin('student');
+  navbar(user, 'dashboard');
+  document.getElementById('welcome').textContent =
+    'Welcome back, ' + user.name.split(' ')[0] + ' — results appear here the moment you submit.';
+
+  var data = await Promise.all([
+    GET('/api/quizzes'),
+    GET('/api/me/attempts'),
+    GET('/api/leaderboard')
+  ]);
+  var quizzes = data[0].quizzes;
+  var mine = data[1].attempts.filter(function (a) { return a.status !== 'in_progress'; });
+  var lb = data[2].rows;
+
+  /* ---- stats ------------------------------------------------------------ */
+  var available = quizzes.filter(function (q) { return q.inProgressAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0); });
+  var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
+  var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
+  document.getElementById('stats').innerHTML =
+    stat(available.length, 'Quizzes open to me') +
+    stat(mine.length, 'Attempts submitted') +
+    stat(fmtPct(avg), 'My average score', true) +
+    stat(fmtPct(best), 'My best score');
+
+  function stat(num, lbl, accent) {
+    return '<div class="stat' + (accent ? ' accent' : '') + '"><div class="num">' + num + '</div><div class="lbl">' + lbl + '</div></div>';
+  }
+
+  /* ---- quiz cards -------------------------------------------------------- */
+  var qEl = document.getElementById('quizzes');
+  if (!quizzes.length) {
+    qEl.innerHTML = '<div class="card empty"><div class="big">📭</div>No quizzes have been published yet. Check back soon.</div>';
+  } else {
+    qEl.innerHTML = quizzes.map(card).join('');
+    $$('#quizzes [data-start]').forEach(function (btn) {
+      btn.onclick = async function () {
+        btn.disabled = true; btn.textContent = 'Starting…';
+        try {
+          var r = await POST('/api/attempts', { quizId: btn.getAttribute('data-start') });
+          location.href = 'quiz.html?attempt=' + r.attempt.id;
+        } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = 'Start quiz'; }
+      };
+    });
+  }
+
+  function card(q) {
+    var actions = '';
+    if (q.inProgressAttemptId) {
+      actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.inProgressAttemptId + '">▶ Resume attempt</a>';
+    } else if (q.attemptsUsed >= q.attemptsAllowed) {
+      actions = '<span class="chip">No attempts left</span>';
+    } else if (!q.questionCount) {
+      actions = '<span class="chip">No questions yet</span>';
+    } else {
+      actions = '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Start quiz') + '</button>';
+    }
+    var outcome = '';
+    if (q.bestPercent != null) {
+      outcome = q.bestPassed
+        ? '<span class="badge ok">Passed · best ' + fmtPct(q.bestPercent) + '</span>'
+        : '<span class="badge bad">Failed · best ' + fmtPct(q.bestPercent) + '</span>';
+    }
+    return '' +
+      '<div class="card hover">' +
+      '<div class="row" style="margin-bottom:9px"><span class="chip info">' + esc(q.subject) + '</span>' +
+      '<span class="spacer"></span>' + outcome + '</div>' +
+      '<h3 style="font-size:17.5px">' + esc(q.title) + '</h3>' +
+      '<p class="muted small" style="min-height:38px">' + esc(q.description || '') + '</p>' +
+      '<div class="row small muted" style="margin-bottom:14px">' +
+      '⏱ ' + q.durationMin + ' min &nbsp;·&nbsp; ❓ ' + q.questionCount + ' questions &nbsp;·&nbsp; 🎯 pass ' + q.passMark + '%' +
+      '</div>' +
+      '<div class="row small muted" style="margin-bottom:16px">Attempts used: <b>&nbsp;' + q.attemptsUsed + '/' + q.attemptsAllowed + '</b></div>' +
+      actions +
+      '</div>';
+  }
+
+  /* ---- results table ----------------------------------------------------- */
+  var rEl = document.getElementById('results');
+  if (!mine.length) {
+    rEl.innerHTML = '<tr><td colspan="7" class="muted">No results yet — take your first quiz above.</td></tr>';
+  } else {
+    rEl.innerHTML = mine.map(function (a) {
+      return '<tr>' +
+        '<td><b>' + esc(a.quizTitle) + '</b></td>' +
+        '<td class="mono">' + a.score + '/' + a.maxScore + '</td>' +
+        '<td><b>' + fmtPct(a.percent) + '</b></td>' +
+        '<td>' + (a.passed ? '<span class="badge ok">Pass</span>' : '<span class="badge bad">Fail</span>') + '</td>' +
+        '<td>' + fmtDur(a.durationUsedSec) + '</td>' +
+        '<td class="small muted">' + fmtWhen(a.submittedAt) + '</td>' +
+        '<td><a class="btn sm" href="result.html?attempt=' + a.id + '">View</a></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /* ---- leaderboard ------------------------------------------------------- */
+  var medals = ['🥇', '🥈', '🥉'];
+  document.getElementById('leaderboard').innerHTML = lb.length
+    ? lb.slice(0, 5).map(function (r, i) {
+        return '<li><span class="rank">' + (medals[i] || (i + 1)) + '</span>' +
+          '<span class="who">' + esc(r.name) + '</span>' +
+          '<span class="chip">' + r.quizzes + ' quiz' + (r.quizzes > 1 ? 'zes' : '') + '</span>' +
+          '<span class="sc">' + fmtPct(r.avgBest) + '</span></li>';
+      }).join('')
+    : '<li class="muted">No results yet.</li>';
+})().catch(function () {});
+</script>
+</body>
+</html>

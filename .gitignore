@@ -1,0 +1,10 @@
+# dependencies & runtime artifacts
+node_modules/
+*.log
+
+# local datastore (auto-seeded with demo data on first run — see README §7)
+data/
+
+# OS junk
+.DS_Store
+Thumbs.db

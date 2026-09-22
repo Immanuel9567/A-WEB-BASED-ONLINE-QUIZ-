@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insights &amp; live monitor — OQAS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="nav"></div>
+
+<main class="container">
+  <section class="pagehead">
+    <div>
+      <h1 id="iTitle">Insights</h1>
+      <p class="sub" id="iMeta">Loading…</p>
+    </div>
+    <a class="btn" href="teacher.html">← Quizzes</a>
+  </section>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="monitor"><span class="live-dot"></span>Live monitor</button>
+    <button class="tab" data-tab="results">Results &amp; export</button>
+    <button class="tab" data-tab="analytics">Analytics</button>
+  </div>
+
+  <!-- ================= MONITOR ================= -->
+  <section id="tab-monitor">
+    <div class="pillrow" id="monSummary"></div>
+    <section class="card tablecard">
+      <table>
+        <thead><tr>
+          <th>Student</th><th>Status</th><th>Progress</th><th>Time left</th>
+          <th>Score</th><th>Outcome</th><th>Submitted</th>
+        </tr></thead>
+        <tbody id="monRows"><tr><td colspan="7" class="muted">Connecting…</td></tr></tbody>
+      </table>
+    </section>
+    <div class="card tight" style="margin-top:14px" id="notStartedCard" hidden>
+      <b class="small">Not yet started:</b> <span class="muted small" id="notStartedList"></span>
+    </div>
+    <p class="small muted" style="margin:12px 2px 0">
+      Live feed refreshes every 2 seconds. Attempts that run out of time are auto-submitted and graded by the server.
+    </p>
+  </section>
+
+  <!-- ================= RESULTS ================= -->
+  <section id="tab-results" hidden>
+    <div class="row" style="margin-bottom:14px">
+      <span class="muted small">All graded attempts for this quiz, newest first.</span>
+      <span class="spacer"></span>
+      <button class="btn sm" id="csvBtn">⬇ Export CSV</button>
+    </div>
+    <section class="card tablecard">
+      <table>
+        <thead><tr>
+          <th>Student</th><th>Score</th><th>Percent</th><th>Outcome</th>
+          <th>Time used</th><th>Tab switches</th><th>Submitted</th><th></th>
+        </tr></thead>
+        <tbody id="resRows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </section>
+  </section>
+
+  <!-- ================= ANALYTICS ================= -->
+  <section id="tab-analytics" hidden>
+    <section class="statgrid" id="anStats"></section>
+
+    <h2 class="sec">Score distribution</h2>
+    <section class="card">
+      <div class="dist" id="dist"></div>
+    </section>
+
+    <h2 class="sec">Item analysis (per question)</h2>
+    <section class="card tablecard">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Question</th><th>Correct</th><th>Wrong</th><th>Skipped</th>
+          <th style="min-width:120px">Facility index</th><th>Difficulty</th>
+        </tr></thead>
+        <tbody id="itemRows"></tbody>
+      </table>
+    </section>
+    <p class="small muted" style="margin:10px 2px 0">
+      Facility index = fraction of candidates who answered correctly. ≥70% easy · 40–69% moderate · &lt;40% hard.
+    </p>
+
+    <h2 class="sec">Leaderboard (best attempt per student)</h2>
+    <section class="card" style="max-width:680px">
+      <ol class="lb" id="anLb"></ol>
+    </section>
+  </section>
+
+  <p style="margin:30px 2px 50px"></p>
+</main>
+
+<script src="js/app.js"></script>
+<script>
+(async function () {
+  var user = await requireLogin('teacher');
+  navbar(user, 'dashboard');
+
+  var quizId = new URLSearchParams(location.search).get('id');
+  if (!quizId) { location.href = 'teacher.html'; return; }
+
+  /* ---- tabs ---- */
+  var active = 'monitor';
+  $$('.tab').forEach(function (t) {
+    t.onclick = function () {
+      active = t.getAttribute('data-tab');
+      $$('.tab').forEach(function (x) { x.classList.toggle('active', x === t); });
+      ['monitor', 'results', 'analytics'].forEach(function (id) {
+        document.getElementById('tab-' + id).hidden = id !== active;
+      });
+      if (active === 'monitor') startMon(); else stopMon();
+      if (active === 'results') loadResults();
+      if (active === 'analytics') loadAnalytics();
+    };
+  });
+
+  /* ---- header ---- */
+  var mon = null, monOffset = 0, monTimer = null, resRows = [];
+
+  /* ================= LIVE MONITOR (poll @2s) ================= */
+  async function loadMon() {
+    try {
+      mon = await GET('/api/quizzes/' + quizId + '/monitor');
+      monOffset = mon.serverNow - Date.now();
+      document.getElementById('iTitle').textContent = mon.quiz.title;
+      document.getElementById('iMeta').textContent =
+        mon.quiz.subject + ' · ' + mon.quiz.durationMin + ' min · pass ' + mon.quiz.passMark + '%';
+
+      var s = mon.summary;
+      document.getElementById('monSummary').innerHTML =
+        pill('👥 ' + s.total + ' attempts', 'info') +
+        pill('✍️ ' + s.inProgress + ' writing now', s.inProgress ? 'ok' : '') +
+        pill('✅ ' + s.submitted + ' submitted', '') +
+        pill('⏰ ' + s.expired + ' expired', s.expired ? 'warn' : '') +
+        pill('📊 avg ' + fmtPct(s.avgPercent), 'info');
+
+      var tb = document.getElementById('monRows');
+      if (!mon.rows.length) {
+        tb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="big">👀</div>No attempts yet — waiting for students to start.</div></td></tr>';
+      } else {
+        tb.innerHTML = mon.rows.map(monRow).join('');
+      }
+
+      var ns = document.getElementById('notStartedCard');
+      if (mon.notStarted.length) {
+        ns.hidden = false;
+        document.getElementById('notStartedList').textContent = mon.notStarted.join(', ');
+      } else ns.hidden = true;
+    } catch (err) {
+      document.getElementById('monRows').innerHTML =
+        '<tr><td colspan="7" class="muted">⚠ ' + esc(err.message) + '</td></tr>';
+    }
+  }
+
+  function monRow(r) {
+    var statusBadge = r.status === 'in_progress' ? '<span class="badge info">Writing…</span>'
+      : r.status === 'expired' ? '<span class="badge warn">Expired</span>'
+      : '<span class="badge ok">Submitted</span>';
+    var pct = Math.round(r.answered / Math.max(1, r.total) * 100);
+    var progress = '<div class="row" style="min-width:130px"><div class="progress"><i style="width:' + pct + '%"></i></div><span class="small muted">' + r.answered + '/' + r.total + '</span></div>';
+    var timeLeft = r.status === 'in_progress'
+      ? '<span class="mono" style="font-weight:700">' + fmtClock((r.endsAt - (Date.now() + monOffset)) / 1000) + '</span>'
+      : '<span class="small muted">' + fmtDur(r.durationUsedSec) + ' used</span>';
+    var score = r.score ? '<b class="mono">' + r.score + '</b>' : '—';
+    var outcome = r.status !== 'in_progress'
+      ? (r.passed ? '<span class="badge ok">' + fmtPct(r.percent) + '</span>' : '<span class="badge bad">' + fmtPct(r.percent) + '</span>')
+      : (r.tabSwitches ? '<span class="badge warn">⚠ ' + r.tabSwitches + ' switches</span>' : '<span class="muted">—</span>');
+    return '<tr>' +
+      '<td><b>' + esc(r.student) + '</b></td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td>' + progress + '</td>' +
+      '<td>' + timeLeft + '</td>' +
+      '<td>' + score + '</td>' +
+      '<td>' + outcome + '</td>' +
+      '<td class="small muted">' + fmtWhen(r.submittedAt) + '</td>' +
+      '</tr>';
+  }
+
+  function startMon() { stopMon(); loadMon(); monTimer = setInterval(loadMon, 2000); }
+  function stopMon() { if (monTimer) { clearInterval(monTimer); monTimer = null; } }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopMon(); else if (active === 'monitor') startMon();
+  });
+
+  function pill(text, cls) { return '<span class="chip ' + (cls || '') + '">' + text + '</span>'; }
+
+  /* ================= RESULTS + CSV ================= */
+  async function loadResults() {
+    try {
+      var r = await GET('/api/quizzes/' + quizId + '/attempts');
+      resRows = r.rows;
+      document.getElementById('iTitle').textContent = r.quiz.title;
+      document.getElementById('iMeta').textContent = r.quiz.subject + ' · graded attempts: ' + r.rows.length;
+      var tb = document.getElementById('resRows');
+      if (!r.rows.length) {
+        tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="big">🗂️</div>No graded attempts yet.</div></td></tr>';
+        return;
+      }
+      tb.innerHTML = r.rows.map(function (a) {
+        return '<tr>' +
+          '<td><b>' + esc(a.student) + '</b></td>' +
+          '<td class="mono">' + a.score + '/' + a.maxScore + '</td>' +
+          '<td><b>' + fmtPct(a.percent) + '</b></td>' +
+          '<td>' + (a.passed ? '<span class="badge ok">Pass</span>' : '<span class="badge bad">Fail</span>') + '</td>' +
+          '<td>' + fmtDur(a.durationUsedSec) + '</td>' +
+          '<td>' + (a.tabSwitches ? '<span class="badge warn">' + a.tabSwitches + '</span>' : '—') + '</td>' +
+          '<td class="small muted">' + fmtWhen(a.submittedAt) + (a.status === 'expired' ? ' <span class="badge warn">expired</span>' : '') + '</td>' +
+          '<td><a class="btn sm" href="result.html?attempt=' + a.id + '">Review</a></td>' +
+          '</tr>';
+      }).join('');
+    } catch (err) { toast(err.message, 'bad'); }
+  }
+
+  document.getElementById('csvBtn').onclick = function () {
+    if (!resRows.length) { toast('Nothing to export yet', 'bad'); return; }
+    var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    var head = ['Student', 'Score', 'Max', 'Percent', 'Outcome', 'Time used (s)', 'Tab switches', 'Status', 'Submitted'].map(q).join(',');
+    var lines = resRows.map(function (a) {
+      return [a.student, a.score, a.maxScore, a.percent, a.passed ? 'PASS' : 'FAIL', a.durationUsedSec, a.tabSwitches, a.status,
+        a.submittedAt ? new Date(a.submittedAt).toISOString() : ''].map(q).join(',');
+    });
+    var csv = head + '\n' + lines.join('\n');
+    var aEl = document.createElement('a');
+    aEl.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    aEl.download = 'oqas-results.csv';
+    document.body.appendChild(aEl); aEl.click(); aEl.remove();
+    toast('CSV exported');
+  };
+
+  /* ================= ANALYTICS ================= */
+  var anLoaded = false;
+  async function loadAnalytics() {
+    try {
+      var r = await GET('/api/quizzes/' + quizId + '/analytics');
+      document.getElementById('iTitle').textContent = r.quiz.title;
+      document.getElementById('iMeta').textContent = r.quiz.subject + ' · analytics';
+
+      var st = r.stats;
+      document.getElementById('anStats').innerHTML =
+        card(st.attempts, 'Graded attempts') +
+        card(fmtPct(st.avgPercent), 'Average score', true) +
+        card(fmtPct(st.highest), 'Highest') +
+        card(fmtPct(st.lowest), 'Lowest') +
+        card(fmtPct(st.passRate), 'Pass rate') +
+        card(fmtDur(st.avgDurationSec), 'Avg time used');
+      function card(v, l, acc) {
+        return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
+      }
+
+      var maxCount = Math.max.apply(null, r.distribution.map(function (d) { return d.count; }).concat([1]));
+      document.getElementById('dist').innerHTML = r.distribution.map(function (d) {
+        var h = Math.round(d.count / maxCount * 100);
+        return '<div class="dist-col"><div class="cnt">' + d.count + '</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="height:' + Math.max(h, 3) + '%"></div></div>' +
+          '<div class="lbl">' + d.label + '</div></div>';
+      }).join('');
+
+      var tb = document.getElementById('itemRows');
+      if (!r.items.length) {
+        tb.innerHTML = '<tr><td colspan="7" class="muted">No questions in this quiz yet.</td></tr>';
+      } else {
+        tb.innerHTML = r.items.map(function (it) {
+          var cls = it.difficulty === 'Easy' ? 'ok' : it.difficulty === 'Moderate' ? 'warn' : 'bad';
+          return '<tr>' +
+            '<td><b>' + it.index + '</b></td>' +
+            '<td style="max-width:340px">' + esc(it.text.length > 80 ? it.text.slice(0, 80) + '…' : it.text) + '</td>' +
+            '<td>' + it.correct + '</td><td>' + it.wrong + '</td><td>' + it.skipped + '</td>' +
+            '<td><div class="row" style="min-width:130px"><div class="facil"><i style="width:' + it.facility + '%"></i></div><span class="small mono">' + it.facility + '%</span></div></td>' +
+            '<td><span class="badge ' + cls + '">' + it.difficulty + '</span></td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      var medals = ['🥇', '🥈', '🥉'];
+      document.getElementById('anLb').innerHTML = r.leaderboard.length
+        ? r.leaderboard.map(function (x, i) {
+            return '<li><span class="rank">' + (medals[i] || (i + 1)) + '</span>' +
+              '<span class="who">' + esc(x.name) + '</span>' +
+              '<span class="chip">' + x.score + '/' + x.maxScore + '</span>' +
+              '<span class="chip">' + fmtDur(x.durationUsedSec) + '</span>' +
+              '<span class="sc">' + fmtPct(x.percent) + '</span></li>';
+          }).join('')
+        : '<li class="muted">No graded attempts yet.</li>';
+      anLoaded = true;
+    } catch (err) { toast(err.message, 'bad'); }
+  }
+
+  startMon();
+})().catch(function () {});
+</script>
+</body>
+</html>

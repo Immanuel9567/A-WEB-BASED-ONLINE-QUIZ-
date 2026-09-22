@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Result sheet — OQAS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="nav"></div>
+
+<main class="container">
+  <section class="pagehead">
+    <div>
+      <h1 id="rTitle">Loading result…</h1>
+      <p class="sub" id="rSub"></p>
+    </div>
+    <a class="btn" href="dashboard.html" id="backBtn">← Back to dashboard</a>
+  </section>
+
+  <section class="card" id="headCard" style="margin-bottom:18px">
+    <div class="ringwrap">
+      <div class="ring">
+        <svg width="150" height="150">
+          <circle cx="75" cy="75" r="62" fill="none" stroke="#eef0f7" stroke-width="13"></circle>
+          <circle id="ringFill" cx="75" cy="75" r="62" fill="none" stroke="#059669" stroke-width="13"
+                  stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6"></circle>
+        </svg>
+        <div class="val"><span id="ringPct">—</span><small id="ringLbl">score</small></div>
+      </div>
+      <div style="flex:1;min-width:250px">
+        <div class="row" style="margin-bottom:12px">
+          <span id="verdict"></span>
+          <span id="statusChip"></span>
+        </div>
+        <div id="rMeta" class="muted small"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="statgrid" id="rStats" style="margin-bottom:18px"></section>
+
+  <h2 class="sec">Answer review</h2>
+  <section class="review" id="review"><div class="card skeleton">Grading…</div></section>
+  <p style="margin:26px 2px 50px"></p>
+</main>
+
+<script src="js/app.js"></script>
+<script>
+(async function () {
+  var user = await requireLogin();
+  navbar(user, 'dashboard');
+
+  var attemptId = new URLSearchParams(location.search).get('attempt');
+  if (!attemptId) { location.href = user.role === 'teacher' ? 'teacher.html' : 'dashboard.html'; return; }
+
+  var data;
+  try { data = await GET('/api/attempts/' + attemptId); }
+  catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = 'dashboard.html'; }, 1200); return; }
+
+  if (data.attempt.status === 'in_progress') {
+    if (user.role === 'teacher') { toast('Attempt still in progress', 'bad'); location.href = 'teacher.html'; return; }
+    location.href = 'quiz.html?attempt=' + attemptId;
+    return;
+  }
+
+  var a = data.attempt, quiz = data.quiz;
+  document.getElementById('backBtn').href = user.role === 'teacher' ? 'teacher.html' : 'dashboard.html';
+
+  document.getElementById('rTitle').textContent = quiz.title;
+  document.getElementById('rSub').textContent =
+    quiz.subject + ' · candidate: ' + data.student + ' · result processed ' + fmtWhen(a.submittedAt);
+
+  /* ---- ring ---- */
+  var ring = document.getElementById('ringFill');
+  var color = a.passed ? '#059669' : '#dc2626';
+  ring.setAttribute('stroke', color);
+  ring.setAttribute('stroke-dashoffset', (389.6 * (1 - Math.min(100, a.percent) / 100)).toFixed(1));
+  document.getElementById('ringPct').textContent = fmtPct(a.percent);
+  document.getElementById('ringLbl').textContent = 'score';
+  document.getElementById('verdict').innerHTML = a.passed
+    ? '<span class="badge ok" style="font-size:14px;padding:7px 16px">Passed</span>'
+    : '<span class="badge bad" style="font-size:14px;padding:7px 16px">Failed</span>';
+  document.getElementById('statusChip').innerHTML =
+    (a.status === 'expired' ? '<span class="badge warn">Auto-submitted · time expired</span>' : '<span class="badge info">Submitted</span>');
+
+  document.getElementById('rMeta').innerHTML =
+    'Pass mark: <b>' + quiz.passMark + '%</b> &nbsp;·&nbsp; Raw score: <b>' + a.score + ' / ' + a.maxScore + '</b> points<br>' +
+    'Started: ' + fmtWhen(a.startedAt) + ' &nbsp;·&nbsp; Time used: <b>' + fmtDur(a.durationUsedSec) + '</b> of ' + quiz.durationMin + ' min' +
+    (a.tabSwitches > 0 ? '<br><span style="color:#b45309;font-weight:700">⚠ ' + a.tabSwitches + ' tab switch' + (a.tabSwitches > 1 ? 'es' : '') + ' recorded during this attempt.</span>' : '');
+
+  /* ---- stat cards ---- */
+  var correct = a.review.filter(function (r) { return r.correct; }).length;
+  var skipped = a.review.filter(function (r) { return r.given === null; }).length;
+  var wrong = a.review.length - correct - skipped;
+  document.getElementById('rStats').innerHTML =
+    st(correct, 'Correct', true) + st(wrong, 'Incorrect') + st(skipped, 'Skipped') + st(fmtDur(a.durationUsedSec), 'Time used');
+  function st(v, l, acc) { return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>'; }
+
+  /* ---- review list ---- */
+  function answerText(q, v) {
+    if (v === null || v === undefined) return '<i class="muted">No answer</i>';
+    if (Array.isArray(v)) return v.map(function (i) { return LETTER(i) + '. ' + esc(q.options[i]); }).join(' &nbsp;+&nbsp; ');
+    return LETTER(v) + '. ' + esc(q.options[v]);
+  }
+
+  document.getElementById('review').innerHTML = a.review.map(function (r, i) {
+    var cls = r.correct ? 'ok' : (r.given === null ? 'skip' : 'bad');
+    var tag = r.correct ? '<span class="badge ok">Correct</span>'
+      : (r.given === null ? '<span class="badge muted">Skipped</span>' : '<span class="badge bad">Incorrect</span>');
+    return '<div class="rev ' + cls + '">' +
+      '<div class="rev-head"><span class="chip">' + (i + 1) + '</span>' + tag +
+      '<span class="chip">' + r.points + ' pt' + (r.points > 1 ? 's' : '') + '</span></div>' +
+      '<div class="q">' + esc(r.text) + '</div>' +
+      '<div class="ansline"><b>Your answer:</b> ' + answerText(r, r.given) + '</div>' +
+      (r.correct ? '' : '<div class="ansline"><b>Correct answer:</b> ' + answerText(r, r.answer) + '</div>') +
+      (r.explanation ? '<div class="explain">💡 ' + esc(r.explanation) + '</div>' : '') +
+      '</div>';
+  }).join('');
+})().catch(function () {});
+</script>
+</body>
+</html>

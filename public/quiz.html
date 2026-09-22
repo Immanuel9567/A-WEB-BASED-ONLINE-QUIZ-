@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz in progress — OQAS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="nav"></div>
+
+<div class="quiz-top">
+  <div class="container row">
+    <div>
+      <div style="font-weight:800;font-size:16px" id="qTitle">Loading…</div>
+      <div class="small muted" id="qMeta"></div>
+    </div>
+    <span class="spacer"></span>
+    <span class="savepill" id="savepill" hidden></span>
+    <div class="timer" id="timer">--:--</div>
+  </div>
+  <div class="container row" style="margin-top:9px">
+    <div class="progress"><i id="progFill" style="width:0%"></i></div>
+    <span class="small muted" id="progTxt"></span>
+  </div>
+</div>
+
+<div class="container">
+  <div id="tabwarn" class="tabwarn" hidden></div>
+
+  <div class="qwrap">
+    <div class="palette" id="palette"></div>
+
+    <div class="qcard">
+      <div class="row">
+        <span class="chip info" id="qNum"></span>
+        <span class="chip" id="qPoints"></span>
+        <span class="chip" id="qType"></span>
+      </div>
+      <div class="qtext" id="qText"></div>
+      <div class="opts" id="qOpts"></div>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="btn" id="prevBtn">← Previous</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="nextBtn">Next →</button>
+      <button class="btn danger" id="submitBtn">Submit quiz</button>
+    </div>
+    <p class="small muted" style="margin:16px 2px 50px">
+      Answers are auto-saved as you click. When the timer reaches 00:00 the quiz is submitted
+      and graded automatically.
+    </p>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+(async function () {
+  var user = await requireLogin('student');
+  navbar(user, 'dashboard');
+
+  var attemptId = new URLSearchParams(location.search).get('attempt');
+  if (!attemptId) { location.href = 'dashboard.html'; return; }
+
+  var data;
+  try {
+    data = await GET('/api/attempts/' + attemptId);
+  } catch (err) {
+    toast(err.message, 'bad');
+    setTimeout(function () { location.href = 'dashboard.html'; }, 1200);
+    return;
+  }
+  if (data.attempt.status !== 'in_progress') {
+    location.href = 'result.html?attempt=' + attemptId;
+    return;
+  }
+
+  var A = data.attempt, quiz = data.quiz, questions = data.questions;
+  var answers = Object.assign({}, A.answers);
+  var idx = 0, tabSwitches = 0, submitting = false, saveTimer = null;
+
+  /* server/client clock offset keeps the countdown honest */
+  var offset = data.serverNow - Date.now();
+  var remainSec = function () { return (A.endsAt - (Date.now() + offset)) / 1000; };
+
+  document.getElementById('qTitle').textContent = quiz.title;
+  document.getElementById('qMeta').textContent =
+    quiz.subject + ' · ' + questions.length + ' questions · pass mark ' + quiz.passMark + '%';
+
+  /* ---------------- palette ---------------- */
+  var pal = document.getElementById('palette');
+  pal.innerHTML = questions.map(function (q, i) {
+    return '<button class="dot" data-i="' + i + '" title="Question ' + (i + 1) + '">' + (i + 1) + '</button>';
+  }).join('');
+  $$('#palette .dot').forEach(function (b) {
+    b.onclick = function () { gotoQ(Number(b.getAttribute('data-i'))); };
+  });
+
+  /* ---------------- render question ---------------- */
+  function gotoQ(i) {
+    idx = Math.max(0, Math.min(questions.length - 1, i));
+    var q = questions[idx];
+    document.getElementById('qNum').textContent = 'Question ' + (idx + 1) + ' of ' + questions.length;
+    document.getElementById('qPoints').textContent = q.points + ' point' + (q.points > 1 ? 's' : '');
+    document.getElementById('qType').textContent =
+      q.type === 'single' ? 'Choose one answer' :
+      q.type === 'multiple' ? 'Select ALL that apply' : 'True or False';
+    document.getElementById('qText').textContent = q.text;
+
+    var given = answers[q.id];
+    var multi = q.type === 'multiple';
+    document.getElementById('qOpts').innerHTML = q.options.map(function (o, oi) {
+      var sel = multi ? (Array.isArray(given) && given.indexOf(oi) >= 0) : (given === oi);
+      return '<label class="opt' + (sel ? ' sel' : '') + '" data-i="' + oi + '">' +
+        '<input type="' + (multi ? 'checkbox' : 'radio') + '" name="q" ' + (sel ? 'checked' : '') + '>' +
+        '<span class="mark"></span><span>' + esc(o) + '</span>' +
+        '<span class="optletter">' + LETTER(oi) + '</span></label>';
+    }).join('');
+
+    $$('#qOpts .opt').forEach(function (lab) {
+      lab.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        pick(Number(lab.getAttribute('data-i')));
+      });
+    });
+
+    document.getElementById('prevBtn').disabled = idx === 0;
+    document.getElementById('nextBtn').style.visibility = idx === questions.length - 1 ? 'hidden' : 'visible';
+    updateChrome();
+  }
+
+  function pick(oi) {
+    var q = questions[idx];
+    if (q.type === 'multiple') {
+      var cur = Array.isArray(answers[q.id]) ? answers[q.id].slice() : [];
+      var pos = cur.indexOf(oi);
+      if (pos >= 0) cur.splice(pos, 1); else cur.push(oi);
+      answers[q.id] = cur.sort(function (a, b) { return a - b; });
+    } else {
+      answers[q.id] = oi;
+    }
+    gotoQ(idx); // re-render selection
+    queueSave(q.id, answers[q.id]);
+  }
+
+  /* ---------------- autosave ---------------- */
+  function queueSave(qid, val) {
+    var pill = document.getElementById('savepill');
+    pill.hidden = false;
+    pill.className = 'savepill busy';
+    pill.textContent = 'Saving…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      POST('/api/attempts/' + attemptId + '/answer', { questionId: qid, answer: val })
+        .then(function () { pill.className = 'savepill'; pill.textContent = '✓ Saved'; })
+        .catch(function (err) {
+          if (err.status === 409) { doSubmit(true); return; }
+          pill.className = 'savepill busy'; pill.textContent = '⚠ ' + err.message;
+        });
+    }, 350);
+  }
+
+  /* ---------------- progress / palette state ---------------- */
+  function answeredCount() {
+    return questions.filter(function (q) {
+      var v = answers[q.id];
+      return v != null && (Array.isArray(v) ? v.length > 0 : true);
+    }).length;
+  }
+  function updateChrome() {
+    var n = answeredCount(), total = questions.length;
+    document.getElementById('progFill').style.width = (total ? (n / total * 100) : 0) + '%';
+    document.getElementById('progTxt').textContent = n + ' of ' + total + ' answered';
+    $$('#palette .dot').forEach(function (b, i) {
+      var q = questions[i];
+      var v = answers[q.id];
+      var done = v != null && (Array.isArray(v) ? v.length > 0 : true);
+      b.className = 'dot' + (done ? ' on' : '') + (i === idx ? ' cur' : '');
+    });
+  }
+
+  /* ---------------- timer ---------------- */
+  var timerEl = document.getElementById('timer');
+  var tick = setInterval(function () {
+    var s = remainSec();
+    timerEl.textContent = fmtClock(s);
+    timerEl.classList.toggle('danger', s <= 60);
+    if (s <= 0) { clearInterval(tick); doSubmit(true); }
+  }, 250);
+
+  /* ---------------- integrity: tab-switch logging ---------------- */
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && !submitting) {
+      tabSwitches++;
+      var w = document.getElementById('tabwarn');
+      w.hidden = false;
+      w.textContent = '⚠ Tab switch detected (' + tabSwitches + '×) — this activity is recorded with your attempt.';
+    }
+  });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (!submitting) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  /* ---------------- submit ---------------- */
+  async function doSubmit(auto) {
+    if (submitting) return;
+    submitting = true;
+    clearInterval(tick);
+    if (!auto) {
+      var un = questions.length - answeredCount();
+      var okToSubmit = await confirmModal({
+        title: auto ? 'Time is up — submitting' : 'Submit your quiz?',
+        body: un > 0
+          ? 'You still have <b>' + un + '</b> unanswered question' + (un > 1 ? 's' : '') + '. Unanswered questions score zero.'
+          : 'All questions answered. Your result will be graded instantly.',
+        okText: 'Submit & grade'
+      });
+      if (!okToSubmit) { submitting = false; startTimerAgain(); return; }
+    }
+    var btn = document.getElementById('submitBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Grading…'; }
+    try {
+      var r = await POST('/api/attempts/' + attemptId + '/submit', { tabSwitches: tabSwitches });
+      toast(r.passed ? 'Graded — you passed with ' + fmtPct(r.percent) : 'Graded — ' + fmtPct(r.percent), r.passed ? 'ok' : 'bad');
+      setTimeout(function () { location.href = 'result.html?attempt=' + attemptId; }, 700);
+    } catch (err) {
+      toast(err.message, 'bad');
+      submitting = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit quiz'; }
+      startTimerAgain();
+    }
+  }
+  function startTimerAgain() {
+    tick = setInterval(function () {
+      var s = remainSec();
+      timerEl.textContent = fmtClock(s);
+      timerEl.classList.toggle('danger', s <= 60);
+      if (s <= 0) { clearInterval(tick); doSubmit(true); }
+    }, 250);
+  }
+
+  document.getElementById('prevBtn').onclick = function () { gotoQ(idx - 1); };
+  document.getElementById('nextBtn').onclick = function () { gotoQ(idx + 1); };
+  document.getElementById('submitBtn').onclick = function () { doSubmit(false); };
+
+  gotoQ(0);
+})().catch(function () {});
+</script>
+</body>
+</html>

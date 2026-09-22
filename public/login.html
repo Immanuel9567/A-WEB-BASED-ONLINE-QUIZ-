@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — OQAS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  .authwrap { min-height: calc(100vh - 62px); display: flex; align-items: center; justify-content: center; padding: 30px 16px; }
+  .authcard { width: 100%; max-width: 430px; }
+  .authcard .brand { justify-content: center; margin-bottom: 18px; font-size: 22px; }
+  .demoquick { display: flex; gap: 8px; margin-top: 16px; }
+  .demoquick .btn { flex: 1; }
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="container navrow">
+    <a class="brand" href="index.html">
+      <svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="url(#lg)"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs></svg>
+      <span>OQAS</span>
+    </a>
+    <div class="navuser"><a class="btn ghost sm" href="index.html">← Back home</a></div>
+  </div>
+</header>
+
+<div class="authwrap">
+  <div class="authcard">
+    <div class="card" style="padding:28px">
+      <div class="brand">
+        <svg width="34" height="34" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="url(#lg2)"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs></svg>
+      </div>
+
+      <div class="segment" style="margin-bottom:20px">
+        <button type="button" id="tabLogin" class="on">Sign in</button>
+        <button type="button" id="tabReg">Create account</button>
+      </div>
+
+      <div id="errBox" class="form-err" hidden></div>
+
+      <!-- ============ SIGN IN ============ -->
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="liEmail">Email address</label>
+          <input id="liEmail" type="email" autocomplete="email" placeholder="you@example.com" required>
+        </div>
+        <div class="field">
+          <label for="liPw">Password</label>
+          <input id="liPw" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </div>
+        <button class="btn primary block" id="liBtn" type="submit">Sign in</button>
+        <div class="demoquick">
+          <button class="btn sm" type="button" id="fillStudent">🎓 Demo student</button>
+          <button class="btn sm" type="button" id="fillTeacher">👩‍🏫 Demo teacher</button>
+        </div>
+      </form>
+
+      <!-- ============ REGISTER ============ -->
+      <form id="regForm" hidden novalidate>
+        <div class="field">
+          <label for="rgName">Full name</label>
+          <input id="rgName" type="text" autocomplete="name" placeholder="e.g. Ngozi Eze">
+        </div>
+        <div class="field">
+          <label for="rgEmail">Email address</label>
+          <input id="rgEmail" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="rgPw">Password</label>
+          <input id="rgPw" type="password" autocomplete="new-password" placeholder="At least 6 characters">
+          <div class="hint">Passwords are stored as salted SHA-256 hashes.</div>
+        </div>
+        <div class="field">
+          <label>I am a</label>
+          <div class="segment">
+            <button type="button" id="roleStudent" class="on">🎓 Student</button>
+            <button type="button" id="roleTeacher">👩‍🏫 Teacher</button>
+          </div>
+          <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
+        </div>
+        <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
+      </form>
+    </div>
+    <p class="center small muted" style="margin-top:14px">
+      By continuing you agree to use this prototype for assessment purposes only.
+    </p>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var role = 'student';
+  var errBox = document.getElementById('errBox');
+
+  function showErr(msg) {
+    errBox.textContent = msg;
+    errBox.hidden = false;
+  }
+  function clearErr() { errBox.hidden = true; }
+
+  function switchTo(which) {
+    clearErr();
+    document.getElementById('tabLogin').classList.toggle('on', which === 'login');
+    document.getElementById('tabReg').classList.toggle('on', which === 'reg');
+    document.getElementById('loginForm').hidden = which !== 'login';
+    document.getElementById('regForm').hidden = which !== 'reg';
+  }
+  document.getElementById('tabLogin').onclick = function () { switchTo('login'); };
+  document.getElementById('tabReg').onclick = function () { switchTo('reg'); };
+
+  document.getElementById('roleStudent').onclick = function () {
+    role = 'student';
+    this.classList.add('on');
+    document.getElementById('roleTeacher').classList.remove('on');
+  };
+  document.getElementById('roleTeacher').onclick = function () {
+    role = 'teacher';
+    this.classList.add('on');
+    document.getElementById('roleStudent').classList.remove('on');
+  };
+
+  document.getElementById('fillStudent').onclick = function () {
+    document.getElementById('liEmail').value = 'student@demo.com';
+    document.getElementById('liPw').value = 'study123';
+  };
+  document.getElementById('fillTeacher').onclick = function () {
+    document.getElementById('liEmail').value = 'teacher@demo.com';
+    document.getElementById('liPw').value = 'teach123';
+  };
+
+  function afterAuth(user) {
+    var next = new URLSearchParams(location.search).get('next') || '';
+    var safe = /^[\w-]+\.html(\?.*)?$/.test(next) ? next : null;
+    location.href = safe || (user.role === 'teacher' ? 'teacher.html' : 'dashboard.html');
+  }
+
+  document.getElementById('loginForm').onsubmit = async function (e) {
+    e.preventDefault();
+    clearErr();
+    var btn = document.getElementById('liBtn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      var r = await POST('/api/auth/login', {
+        email: document.getElementById('liEmail').value,
+        password: document.getElementById('liPw').value
+      });
+      setToken(r.token);
+      afterAuth(r.user);
+    } catch (err) {
+      showErr(err.message);
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  };
+
+  document.getElementById('regForm').onsubmit = async function (e) {
+    e.preventDefault();
+    clearErr();
+    var btn = document.getElementById('rgBtn');
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    try {
+      var r = await POST('/api/auth/register', {
+        name: document.getElementById('rgName').value,
+        email: document.getElementById('rgEmail').value,
+        password: document.getElementById('rgPw').value,
+        role: role
+      });
+      setToken(r.token);
+      afterAuth(r.user);
+    } catch (err) {
+      showErr(err.message);
+      btn.disabled = false; btn.textContent = 'Create account';
+    }
+  };
+})();
+</script>
+</body>
+</html>
