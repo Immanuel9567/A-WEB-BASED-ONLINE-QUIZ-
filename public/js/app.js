@@ -59,6 +59,8 @@
     volumeX: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
     chevronsLeft: '<polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>',
     menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+    arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+    arrowDown: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'
   };
   window.icon = function (name, size) {
@@ -233,8 +235,7 @@
       item('create', 'builder.html?new=1', 'plus', 'Create quiz')
     ] : [
       item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
-      item('results', 'dashboard.html#results', 'fileText', 'My results'),
-      item('leaderboard', 'dashboard.html#leaderboard', 'award', 'Leaderboard')
+      item('results', 'dashboard.html#results', 'fileText', 'My results')
     ];
 
     document.body.classList.remove('sb-open'); // drawer never survives a re-render

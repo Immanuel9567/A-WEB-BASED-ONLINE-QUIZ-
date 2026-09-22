@@ -36,11 +36,7 @@
     </table>
   </section>
 
-  <h2 class="sec" id="leaderboard">Top performers</h2>
-  <section class="card" style="max-width:640px">
-    <ol class="lb" id="leaderboard"><li class="muted">Loading…</li></ol>
-  </section>
-  <p class="small muted" style="margin:10px 2px 40px">Ranked by average of your best score on each quiz taken.</p>
+  <p style="margin:26px 2px 50px"></p>
 </main>
 
 <script src="js/app.js"></script>
@@ -54,12 +50,10 @@
   async function loadAll() {
   var data = await Promise.all([
     GET('/api/quizzes'),
-    GET('/api/me/attempts'),
-    GET('/api/leaderboard')
+    GET('/api/me/attempts')
   ]);
   var quizzes = data[0].quizzes;
   var mine = data[1].attempts.filter(function (a) { return a.status !== 'in_progress'; });
-  var lb = data[2].rows;
 
   /* ---- stats ------------------------------------------------------------ */
   var available = quizzes.filter(function (q) { return q.inProgressAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0); });
@@ -180,15 +174,6 @@
     }).join('');
   }
 
-  /* ---- leaderboard ------------------------------------------------------- */
-  document.getElementById('leaderboard').innerHTML = lb.length
-    ? lb.slice(0, 5).map(function (r, i) {
-        return '<li><span class="rank">' + (i + 1) + '</span>' +
-          '<span class="who">' + esc(r.name) + '</span>' +
-          '<span class="chip">' + r.quizzes + ' quiz' + (r.quizzes > 1 ? 'zes' : '') + '</span>' +
-          '<span class="sc">' + fmtPct(r.avgBest) + '</span></li>';
-      }).join('')
-    : '<li class="muted">No results yet.</li>';
   }
   try { loadAll(); }
   catch (e) {

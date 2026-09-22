@@ -38,7 +38,7 @@ its join code — then create quizzes and let students register and join with th
 2. **Students take it live** — timed delivery with auto-saved answers, a navigation palette,
    optional question/option shuffling, and a server-side countdown that auto-submits on expiry.
 3. **Results process in real time** — scores, pass/fail verdicts, answer reviews, teacher
-   notifications, leaderboards and analytics update the moment attempts land.
+   notifications and analytics update the moment attempts land.
 
 ### Features
 
@@ -80,6 +80,10 @@ its join code — then create quizzes and let students register and join with th
   the colour tints that class's quiz cards and notifications on student dashboards.
 - **Manage students**: the class page shows every member with their stats, and the teacher
   can **remove (kick)** a student from the class at any time.
+- **Sorting analytics (teacher only)**: on the students page, sort the whole school or any
+  single class by name, quizzes taken, attempts, average, best score or last activity —
+  click a column header, click again to reverse. The class page's member table sorts the
+  same way, and the CSV export follows whatever is on screen. Students never see rankings.
 
 **Questions with pictures**
 - Attach a picture (diagram, screenshot, chart) to any question — it is resized automatically,
@@ -120,7 +124,7 @@ restore, joining a class — also update the screen in place.
 - **Live monitor** — who is writing, progress, time left and scores as they land
   (2-second polling), plus students who haven't started.
 - **Analytics** — average/highest/lowest, pass rate, score distribution, per-question item
-  analysis (facility index + difficulty label), leaderboard, CSV export.
+  analysis (facility index + difficulty label), per-quiz top performers, CSV export.
 
 **Security (prototype level)**
 - Salted SHA-256 password hashes; bearer-token sessions with TTL.
@@ -201,7 +205,7 @@ restore, joining a class — also update the screen in place.
 | `GET /api/me/attempts` | user | My attempt history |
 | `GET /api/quizzes/:id/monitor` | teacher | Live session snapshot (summary + rows + not-started) |
 | `GET /api/quizzes/:id/attempts` | teacher | Graded attempts table |
-| `GET /api/quizzes/:id/analytics` | teacher | Stats, distribution, item analysis, leaderboard |
+| `GET /api/quizzes/:id/analytics` | teacher | Stats, distribution, item analysis, per-quiz top performers |
 | `GET /api/classes/mine` | teacher | The teacher's class + join code |
 | `POST /api/classes` | teacher | Create a class (name) — returns its unique code |
 | `GET /api/classes` | any | Teacher: own class · Student: classes joined |
@@ -221,7 +225,7 @@ restore, joining a class — also update the screen in place.
 | `GET /api/notifications` | teacher | Notifications grouped by quiz + unread count |
 | `POST /api/notifications/read` | teacher | Mark one / all as read |
 | `DELETE /api/notifications` | teacher | Clear all notifications |
-| `GET /api/leaderboard` | user | Global top performers |
+| `GET /api/students` | teacher | All students with stats + their classes (sortable, filterable) |
 
 ### Grading rules
 - **Single choice / True-False** — exact match → full points, else 0.
@@ -246,7 +250,7 @@ quiz-system/
     ├── js/app.js          # shared helpers + uniform inline-SVG icon pack
     ├── index.html         # landing (sign-in + repo link)
     ├── login.html         # sign in / register
-    ├── dashboard.html     # student home (quizzes, results, leaderboard)
+    ├── dashboard.html     # student home (quizzes, results)
     ├── quiz.html          # timed quiz runner (autosave, tab-switch policy)
     ├── result.html        # instant result sheet + answer review
     ├── students.html      # enrolled students + per-student quiz history

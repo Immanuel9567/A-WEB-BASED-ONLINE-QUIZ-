@@ -45,7 +45,10 @@
   <section class="card tablecard" id="memCard" hidden>
     <table>
       <thead><tr>
-        <th>Student</th><th>Quizzes</th><th>Attempts</th><th>Average</th><th>Best</th><th>Last activity</th><th style="text-align:right">Actions</th>
+        <th data-k="name">Student <span class="sarr"></span></th><th data-k="quizzes">Quizzes <span class="sarr"></span></th>
+        <th data-k="attempts">Attempts <span class="sarr"></span></th><th data-k="avg">Average <span class="sarr"></span></th>
+        <th data-k="best">Best <span class="sarr"></span></th><th data-k="active">Last activity <span class="sarr"></span></th>
+        <th style="text-align:right">Actions</th>
       </tr></thead>
       <tbody id="mRows"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
     </table>
@@ -90,6 +93,33 @@
   document.getElementById('clsSettings').innerHTML = icon('sliders', 15) + ' Settings';
 
   var c = null, owner = false, d = null;
+  var sortKey = 'active', sortDir = -1; // members table sorting (teacher)
+  var MKEYS = {
+    name: function (m) { return m.name.toLowerCase(); },
+    quizzes: function (m) { return m.quizzesTaken; },
+    attempts: function (m) { return m.attempts; },
+    avg: function (m) { return m.avgPercent; },
+    best: function (m) { return m.bestPercent; },
+    active: function (m) { return m.lastActivity; }
+  };
+  function memberView() {
+    var get = MKEYS[sortKey] || MKEYS.active;
+    var isName = sortKey === 'name';
+    return (d.members || []).slice().sort(function (a, b) {
+      var va = get(a), vb = get(b);
+      if (va == null && vb == null) return a.name.localeCompare(b.name);
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      var r = isName ? va.localeCompare(vb) : va - vb;
+      return r * sortDir || a.name.localeCompare(b.name);
+    });
+  }
+  function paintMemberArrows() {
+    $$('#memCard th[data-k]').forEach(function (th) {
+      var on = th.getAttribute('data-k') === sortKey;
+      th.querySelector('.sarr').innerHTML = on ? icon(sortDir > 0 ? 'arrowUp' : 'arrowDown', 12) : '';
+    });
+  }
   var PALETTE = ['#1a73e8', '#188038', '#12b5cb', '#a142f4', '#ad1457', '#d93025', '#e8710a', '#f9ab00', '#5f6368'];
   var pickedColor = null;
 
@@ -117,7 +147,7 @@
         mb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('users', 34) + '</div>' +
           'No students have joined yet — share the code <b>&nbsp;' + esc(c.code) + '&nbsp;</b>with your class.</div></td></tr>';
       } else {
-        mb.innerHTML = d.members.map(function (m) {
+        mb.innerHTML = memberView().map(function (m) {
           return '<tr>' +
             '<td><b>' + esc(m.name) + '</b><br><span class="small muted">' + esc(m.email) + '</span></td>' +
             '<td>' + m.quizzesTaken + '</td>' +
@@ -130,6 +160,15 @@
             '<button class="btn sm danger" data-kick="' + m.id + '" data-name="' + esc(m.name) + '">' + icon('x', 13) + ' Kick</button>' +
             '</td></tr>';
         }).join('');
+        paintMemberArrows();
+        $$('#memCard th[data-k]').forEach(function (th) {
+          th.onclick = function () {
+            var k = th.getAttribute('data-k');
+            if (sortKey === k) sortDir = -sortDir;
+            else { sortKey = k; sortDir = k === 'name' ? 1 : -1; }
+            loadClassPage();
+          };
+        });
         wireKick();
       }
     }

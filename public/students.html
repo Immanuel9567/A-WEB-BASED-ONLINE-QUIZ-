@@ -23,12 +23,17 @@
 
     <section class="statgrid" id="stats"></section>
 
-    <h2 class="sec">All students</h2>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <h2 class="sec" id="listHead" style="margin:22px 0 10px">All students</h2>
+      <select id="classFilter" title="Show one class or all classes"></select>
+    </div>
     <section class="card tablecard">
       <table>
         <thead><tr>
-          <th>Student</th><th>Joined</th><th>Quizzes</th><th>Attempts</th>
-          <th>Average</th><th>Best</th><th>Last active</th><th></th>
+          <th data-k="name">Student <span class="sarr"></span></th><th data-k="joined">Joined <span class="sarr"></span></th>
+          <th data-k="quizzes">Quizzes <span class="sarr"></span></th><th data-k="attempts">Attempts <span class="sarr"></span></th>
+          <th data-k="avg">Average <span class="sarr"></span></th><th data-k="best">Best <span class="sarr"></span></th>
+          <th data-k="active">Last active <span class="sarr"></span></th><th></th>
         </tr></thead>
         <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
       </table>
@@ -78,24 +83,75 @@
     return name.trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
   }
 
-  /* ================= list view ================= */
-  async function loadList() {
-    var r = await GET('/api/students');
-    students = r.students;
+  /* ============ list view: class filter + sortable columns (teacher analytics) ============ */
+  var classes = [];
+  var filterClass = '';    // '' = all classes
+  var sortKey = 'active';  // default: most recent activity first
+  var sortDir = -1;
 
-    var withAttempts = students.filter(function (s) { return s.attempts > 0; }).length;
-    var writing = students.filter(function (s) { return s.inProgress; }).length;
-    var avgs = students.filter(function (s) { return s.avgPercent != null; }).map(function (s) { return s.avgPercent; });
-    var classAvg = avgs.length ? Math.round(avgs.reduce(function (a, b) { return a + b; }, 0) / avgs.length * 10) / 10 : null;
+  var KEYS = {
+    name: function (s) { return s.name.toLowerCase(); },
+    joined: function (s) { return s.createdAt; },
+    quizzes: function (s) { return s.quizzesTaken; },
+    attempts: function (s) { return s.attempts; },
+    avg: function (s) { return s.avgPercent; },
+    best: function (s) { return s.bestPercent; },
+    active: function (s) { return s.lastActivity; }
+  };
 
-    document.getElementById('sub').textContent =
-      students.length + ' student' + (students.length === 1 ? '' : 's') + ' registered on the system';
+  function view() { // filter by class, then sort — students without attempts always last
+    var list = students.filter(function (s) {
+      return !filterClass || (s.classes || []).some(function (c) { return c.id === filterClass; });
+    });
+    var get = KEYS[sortKey] || KEYS.active;
+    var isName = sortKey === 'name';
+    list.sort(function (a, b) {
+      var va = get(a), vb = get(b);
+      if (va == null && vb == null) return a.name.localeCompare(b.name);
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      var r = isName ? va.localeCompare(vb) : va - vb;
+      return (r || a.name.localeCompare(b.name)) * (isName ? sortDir : sortDir) || a.name.localeCompare(b.name);
+    });
+    return list;
+  }
 
+  function paintArrows(root) {
+    $$(root + ' th[data-k]').forEach(function (th) {
+      var on = th.getAttribute('data-k') === sortKey;
+      th.querySelector('.sarr').innerHTML = on ? icon(sortDir > 0 ? 'arrowUp' : 'arrowDown', 12) : '';
+    });
+  }
+
+  function wireSort(root) {
+    $$(root + ' th[data-k]').forEach(function (th) {
+      th.onclick = function () {
+        var k = th.getAttribute('data-k');
+        if (sortKey === k) sortDir = -sortDir;
+        else { sortKey = k; sortDir = k === 'name' ? 1 : -1; }
+        renderList();
+      };
+    });
+  }
+
+  function renderList() {
+    paintArrows('#listView');
+    var list = view();
+    var cls = classes.find(function (c) { return c.id === filterClass; });
+
+    document.getElementById('listHead').textContent = cls
+      ? cls.name + ' — ' + list.length + ' student' + (list.length === 1 ? '' : 's')
+      : 'All students';
+
+    var withAttempts = list.filter(function (s) { return s.attempts > 0; }).length;
+    var writing = list.filter(function (s) { return s.inProgress; }).length;
+    var avgs = list.filter(function (s) { return s.avgPercent != null; }).map(function (s) { return s.avgPercent; });
+    var avg = avgs.length ? Math.round(avgs.reduce(function (a, b) { return a + b; }, 0) / avgs.length * 10) / 10 : null;
     document.getElementById('stats').innerHTML =
-      stat(students.length, 'Enrolled students') +
+      stat(list.length, cls ? 'In ' + cls.name : 'Students shown') +
       stat(withAttempts, 'Taken at least one quiz') +
       stat(writing, 'Writing right now', writing > 0) +
-      stat(fmtPct(classAvg), 'Class average', true);
+      stat(fmtPct(avg), cls ? cls.name + ' average' : 'Average score', true);
 
     var tb = document.getElementById('rows');
     if (!students.length) {
@@ -103,10 +159,20 @@
         'No students enrolled yet — students can register from the sign-in page.</div></td></tr>';
       return;
     }
-    tb.innerHTML = students.map(function (s) {
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('users', 34) + '</div>' +
+        'No students in ' + esc(cls ? cls.name : 'this class') + ' yet — share its join code.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = list.map(function (s) {
+      var chips = (s.classes || []).map(function (c) {
+        return '<span class="chip classchip">' + (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>';
+      }).join(' ');
       return '<tr>' +
         '<td><div class="stucell"><span class="avatar">' + esc(initialsOf(s.name)) + '</span>' +
-        '<span><span class="sname">' + esc(s.name) + '</span><br><span class="smail">' + esc(s.email) + '</span></span></div></td>' +
+        '<span><span class="sname">' + esc(s.name) + '</span><br><span class="smail">' + esc(s.email) + '</span>' +
+        (chips ? '<br><span class="small" style="display:inline-flex;gap:6px;flex-wrap:wrap;margin-top:4px">' + chips + '</span>' : '') +
+        '</span></div></td>' +
         '<td class="small muted">' + new Date(s.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + '</td>' +
         '<td>' + s.quizzesTaken + '</td>' +
         '<td>' + s.attempts + '</td>' +
@@ -120,6 +186,24 @@
     $$('[data-hist]').forEach(function (b) {
       b.onclick = function () { openHistory(b.getAttribute('data-hist')); };
     });
+  }
+
+  async function loadList() {
+    var r = await Promise.all([GET('/api/students'), GET('/api/classes/mine')]);
+    students = r[0].students;
+    classes = r[1].classes || [];
+
+    document.getElementById('sub').textContent =
+      students.length + ' student' + (students.length === 1 ? '' : 's') + ' registered on the system';
+
+    var sel = document.getElementById('classFilter');
+    sel.innerHTML = '<option value="">All classes</option>' + classes.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+    }).join('');
+    sel.onchange = function () { filterClass = sel.value; renderList(); };
+
+    wireSort('#listView');
+    renderList();
   }
 
   function stat(v, l, accent) {
@@ -186,9 +270,10 @@
   document.getElementById('csvBtn').onclick = function () {
     if (!students.length) { toast('Nothing to export yet', 'bad'); return; }
     var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
-    var head = ['Name', 'Email', 'Joined', 'Quizzes taken', 'Attempts', 'Average %', 'Best %', 'Last active'].map(q).join(',');
-    var lines = students.map(function (s) {
-      return [s.name, s.email, new Date(s.createdAt).toISOString(), s.quizzesTaken, s.attempts,
+    var head = ['Name', 'Email', 'Classes', 'Joined', 'Quizzes taken', 'Attempts', 'Average %', 'Best %', 'Last active'].map(q).join(',');
+    var lines = view().map(function (s) {
+      return [s.name, s.email, (s.classes || []).map(function (c) { return c.name; }).join('; '),
+        new Date(s.createdAt).toISOString(), s.quizzesTaken, s.attempts,
         s.avgPercent, s.bestPercent, s.lastActivity ? new Date(s.lastActivity).toISOString() : ''].map(q).join(',');
     });
     var csv = head + '\n' + lines.join('\n');

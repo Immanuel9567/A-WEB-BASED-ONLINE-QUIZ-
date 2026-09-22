@@ -841,6 +841,9 @@ route('GET', '/api/students', async ({ user, res }) => {
       for (const qid of quizIds) sumBest += Math.max(...mine.filter((a) => a.quizId === qid).map((a) => a.percent));
       return {
         id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
+        classes: db.classes
+          .filter((c) => (c.studentIds || []).includes(u.id))
+          .map((c) => ({ id: c.id, name: c.name, color: c.color || null })),
         attempts: mine.length, quizzesTaken: quizIds.length,
         avgPercent: mine.length ? Math.round(mine.reduce((s2, a) => s2 + a.percent, 0) / mine.length * 10) / 10 : null,
         bestPercent: mine.length ? Math.max(...mine.map((a) => a.percent)) : null,
@@ -947,25 +950,6 @@ route('DELETE', '/api/notifications', async ({ user, res }) => {
   send(res, 200, { ok: true });
 });
 
-/* ======== GLOBAL LEADERBOARD (students) ======== */
-route('GET', '/api/leaderboard', async ({ user, res }) => {
-  if (!user) return send(res, 401, { error: 'Sign in required.' });
-  expireStale();
-  const rows = db.users
-    .filter((u) => u.role === 'student')
-    .map((u) => {
-      const mine = db.attempts.filter((a) => a.userId === u.id && a.status !== 'in_progress');
-      if (!mine.length) return null;
-      const quizIds = [...new Set(mine.map((a) => a.quizId))];
-      let sumBest = 0;
-      for (const qid of quizIds) sumBest += Math.max(...mine.filter((a) => a.quizId === qid).map((a) => a.percent));
-      return { name: u.name, attempts: mine.length, quizzes: quizIds.length, avgBest: Math.round(sumBest / quizIds.length * 10) / 10 };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.avgBest - a.avgBest)
-    .slice(0, 10);
-  send(res, 200, { rows });
-});
 
 /* ======== PROFILE (self-service editing) ======== */
 route('PUT', '/api/auth/profile', async ({ user, body, res }) => {
