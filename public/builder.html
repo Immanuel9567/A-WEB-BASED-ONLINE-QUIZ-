@@ -201,19 +201,18 @@
     if (!myClasses.length) html += '<div class="hint" style="margin:4px 0 0">No classes yet — create one on your dashboard to assign quizzes to a class.</div>';
     visWrap.innerHTML = html;
     var allEl = document.getElementById('visAll');
-    function sync() {
-      var anyCls = $$('[data-cls]', visWrap).some(function (b) { return b.checked; });
-      if (allEl) allEl.checked = !anyCls;
-      $$('[data-cls]', visWrap).forEach(function (b) { b.disabled = allEl && allEl.checked; });
-    }
+    /* ticking a class switches off "All students"; ticking "All students"
+       clears the classes; unchecking your last class returns to everyone */
     if (allEl) allEl.onchange = function () {
-      $$('[data-cls]', visWrap).forEach(function (b) { b.checked = false; });
-      sync();
+      if (allEl.checked) $$('[data-cls]', visWrap).forEach(function (b) { b.checked = false; });
     };
     $$('[data-cls]', visWrap).forEach(function (b) {
-      b.onchange = function () { if (b.checked && allEl) allEl.checked = false; sync(); };
+      b.onchange = function () {
+        if (b.checked) { if (allEl) allEl.checked = false; return; }
+        var any = $$('[data-cls]', visWrap).some(function (x) { return x.checked; });
+        if (!any && allEl) allEl.checked = true;
+      };
     });
-    sync();
   }
   function selectedClasses() {
     var allEl = document.getElementById('visAll');
