@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enrolled students — OQAS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body class="app">
+<div id="nav"></div>
+
+<main class="container">
+  <!-- ============ LIST VIEW ============ -->
+  <section id="listView">
+    <section class="pagehead">
+      <div>
+        <h1>Enrolled students</h1>
+        <p class="sub" id="sub">Loading…</p>
+      </div>
+      <button class="btn" id="csvBtn"></button>
+    </section>
+
+    <section class="statgrid" id="stats"></section>
+
+    <h2 class="sec">All students</h2>
+    <section class="card tablecard">
+      <table>
+        <thead><tr>
+          <th>Student</th><th>Joined</th><th>Quizzes</th><th>Attempts</th>
+          <th>Average</th><th>Best</th><th>Last active</th><th></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </section>
+  </section>
+
+  <!-- ============ DETAIL VIEW ============ -->
+  <section id="detailView" hidden>
+    <section class="pagehead">
+      <div>
+        <h1 id="dName">Student</h1>
+        <p class="sub" id="dSub"></p>
+      </div>
+      <button class="btn" id="backBtn"></button>
+    </section>
+
+    <section class="statgrid" id="dStats"></section>
+
+    <h2 class="sec">Quiz history</h2>
+    <section class="card tablecard">
+      <table>
+        <thead><tr>
+          <th>Quiz</th><th>Score</th><th>Percent</th><th>Outcome</th><th>Status</th>
+          <th>Time used</th><th>Tab switches</th><th>Submitted</th><th></th>
+        </tr></thead>
+        <tbody id="dRows"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </section>
+  </section>
+
+  <p style="margin:30px 2px 50px"></p>
+</main>
+
+<script src="js/app.js"></script>
+<script>
+(async function () {
+  var user = await requireLogin('teacher');
+  navbar(user, 'students');
+  document.getElementById('csvBtn').innerHTML = icon('download', 14) + ' Export CSV';
+  document.getElementById('backBtn').innerHTML = icon('arrowLeft', 15) + ' Back to students';
+
+  var students = [];
+  var listView = document.getElementById('listView');
+  var detailView = document.getElementById('detailView');
+
+  function initialsOf(name) {
+    return name.trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
+  }
+
+  /* ================= list view ================= */
+  async function loadList() {
+    var r = await GET('/api/students');
+    students = r.students;
+
+    var withAttempts = students.filter(function (s) { return s.attempts > 0; }).length;
+    var writing = students.filter(function (s) { return s.inProgress; }).length;
+    var avgs = students.filter(function (s) { return s.avgPercent != null; }).map(function (s) { return s.avgPercent; });
+    var classAvg = avgs.length ? Math.round(avgs.reduce(function (a, b) { return a + b; }, 0) / avgs.length * 10) / 10 : null;
+
+    document.getElementById('sub').textContent =
+      students.length + ' student' + (students.length === 1 ? '' : 's') + ' registered on the system';
+
+    document.getElementById('stats').innerHTML =
+      stat(students.length, 'Enrolled students') +
+      stat(withAttempts, 'Taken at least one quiz') +
+      stat(writing, 'Writing right now', writing > 0) +
+      stat(fmtPct(classAvg), 'Class average', true);
+
+    var tb = document.getElementById('rows');
+    if (!students.length) {
+      tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('users', 34) + '</div>' +
+        'No students enrolled yet — students can register from the sign-in page.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = students.map(function (s) {
+      return '<tr>' +
+        '<td><div class="stucell"><span class="avatar">' + esc(initialsOf(s.name)) + '</span>' +
+        '<span><span class="sname">' + esc(s.name) + '</span><br><span class="smail">' + esc(s.email) + '</span></span></div></td>' +
+        '<td class="small muted">' + new Date(s.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + '</td>' +
+        '<td>' + s.quizzesTaken + '</td>' +
+        '<td>' + s.attempts + '</td>' +
+        '<td><b>' + fmtPct(s.avgPercent) + '</b></td>' +
+        '<td>' + fmtPct(s.bestPercent) + '</td>' +
+        '<td class="small muted">' + (s.inProgress ? '<span class="badge info">Writing now</span>' : fmtAgo(s.lastActivity)) + '</td>' +
+        '<td class="actions"><button class="btn sm" data-hist="' + s.id + '">' + icon('fileText', 13) + ' History</button></td>' +
+        '</tr>';
+    }).join('');
+
+    $$('[data-hist]').forEach(function (b) {
+      b.onclick = function () { openHistory(b.getAttribute('data-hist')); };
+    });
+  }
+
+  function stat(v, l, accent) {
+    return '<div class="stat' + (accent ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
+  }
+
+  /* ================= detail view ================= */
+  async function openHistory(id) {
+    var stu = students.find(function (s) { return s.id === id; });
+    document.getElementById('dName').textContent = stu ? stu.name : 'Student';
+    try {
+      var r = await GET('/api/students/' + id + '/history');
+      var s = r.student;
+      document.getElementById('dName').textContent = s.name;
+      document.getElementById('dSub').textContent = s.email + ' · enrolled ' +
+        new Date(s.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+
+      var done = r.attempts.filter(function (a) { return a.status !== 'in_progress'; });
+      var best = done.length ? Math.max.apply(null, done.map(function (a) { return a.percent; })) : null;
+      var avg = done.length ? Math.round(done.reduce(function (t, a) { return t + a.percent; }, 0) / done.length * 10) / 10 : null;
+      document.getElementById('dStats').innerHTML =
+        stat(r.attempts.length, 'Total attempts') +
+        stat(done.length, 'Graded attempts') +
+        stat(fmtPct(avg), 'Average score') +
+        stat(fmtPct(best), 'Best score', true);
+
+      var tb = document.getElementById('dRows');
+      if (!r.attempts.length) {
+        tb.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
+          'This student has not attempted any quizzes yet.</div></td></tr>';
+      } else {
+        tb.innerHTML = r.attempts.map(function (a) {
+          var statusBadge = a.status === 'in_progress' ? '<span class="badge info">In progress</span>'
+            : a.status === 'expired' ? '<span class="badge warn">Expired</span>'
+            : '<span class="badge ok">Submitted</span>';
+          return '<tr>' +
+            '<td><b>' + esc(a.quizTitle) + '</b></td>' +
+            '<td class="mono">' + (a.status === 'in_progress' ? '—' : a.score + '/' + a.maxScore) + '</td>' +
+            '<td><b>' + (a.status === 'in_progress' ? '—' : fmtPct(a.percent)) + '</b></td>' +
+            '<td>' + (a.status === 'in_progress' ? '—' : '<span class="badge ' + (a.passed ? 'ok' : 'bad') + '">' + (a.passed ? 'Pass' : 'Fail') + '</span>') + '</td>' +
+            '<td>' + statusBadge + '</td>' +
+            '<td>' + fmtDur(a.durationUsedSec) + '</td>' +
+            '<td>' + (a.tabSwitches ? '<span class="badge warn">' + a.tabSwitches + '</span>' : '—') + '</td>' +
+            '<td class="small muted">' + fmtWhen(a.submittedAt || a.startedAt) + '</td>' +
+            '<td>' + (a.status === 'in_progress' ? '' : '<a class="btn sm" href="result.html?attempt=' + a.id + '">Review</a>') + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+      listView.hidden = true;
+      detailView.hidden = false;
+      window.scrollTo({ top: 0 });
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  }
+
+  document.getElementById('backBtn').onclick = function () {
+    detailView.hidden = true;
+    listView.hidden = false;
+    window.scrollTo({ top: 0 });
+  };
+
+  /* ================= CSV export ================= */
+  document.getElementById('csvBtn').onclick = function () {
+    if (!students.length) { toast('Nothing to export yet', 'bad'); return; }
+    var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    var head = ['Name', 'Email', 'Joined', 'Quizzes taken', 'Attempts', 'Average %', 'Best %', 'Last active'].map(q).join(',');
+    var lines = students.map(function (s) {
+      return [s.name, s.email, new Date(s.createdAt).toISOString(), s.quizzesTaken, s.attempts,
+        s.avgPercent, s.bestPercent, s.lastActivity ? new Date(s.lastActivity).toISOString() : ''].map(q).join(',');
+    });
+    var csv = head + '\n' + lines.join('\n');
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'oqas-students.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('CSV exported');
+  };
+
+  await loadList();
+})().catch(function () {});
+</script>
+</body>
+</html>

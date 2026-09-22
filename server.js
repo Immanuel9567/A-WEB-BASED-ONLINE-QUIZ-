@@ -334,7 +334,7 @@ function readBody(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 1e6) { reject(new Error('Payload too large')); req.destroy(); }
+      if (data.length > 5e6) { reject(new Error('Payload too large')); req.destroy(); }
     });
     req.on('end', () => {
       if (!data) return resolve({});
@@ -890,6 +890,76 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
     distribution: bands.map((count, i) => ({ label: labels[i], count })),
     items, leaderboard
   });
+});
+
+/* ======== STUDENTS (teacher) ======== */
+route('GET', '/api/students', async ({ user, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  expireStale();
+  const students = db.users
+    .filter((u) => u.role === 'student')
+    .map((u) => {
+      const mine = db.attempts.filter((a) => a.userId === u.id && a.status !== 'in_progress');
+      const quizIds = [...new Set(mine.map((a) => a.quizId))];
+      let sumBest = 0;
+      for (const qid of quizIds) sumBest += Math.max(...mine.filter((a) => a.quizId === qid).map((a) => a.percent));
+      return {
+        id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
+        attempts: mine.length, quizzesTaken: quizIds.length,
+        avgPercent: mine.length ? Math.round(mine.reduce((s2, a) => s2 + a.percent, 0) / mine.length * 10) / 10 : null,
+        bestPercent: mine.length ? Math.max(...mine.map((a) => a.percent)) : null,
+        lastActivity: mine.length ? Math.max(...mine.map((a) => a.submittedAt || a.startedAt)) : null,
+        inProgress: db.attempts.some((a) => a.userId === u.id && a.status === 'in_progress')
+      };
+    })
+    .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0) || a.name.localeCompare(b.name));
+  send(res, 200, { students });
+});
+
+route('GET', '/api/students/([A-Za-z0-9_]+)/history', async ({ user, params, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  expireStale();
+  const stu = byId(db.users, params[0]);
+  if (!stu || stu.role !== 'student') return send(res, 404, { error: 'Student not found.' });
+  const attempts = db.attempts
+    .filter((a) => a.userId === stu.id)
+    .map((a) => ({
+      id: a.id, quizId: a.quizId, quizTitle: (byId(db.quizzes, a.quizId) || { title: '(deleted quiz)' }).title,
+      status: a.status, score: a.score, maxScore: a.maxScore, percent: a.percent, passed: a.passed,
+      submittedAt: a.submittedAt || null, startedAt: a.startedAt,
+      durationUsedSec: a.durationUsedSec || null, tabSwitches: a.tabSwitches || 0
+    }))
+    .sort((x, y) => (y.submittedAt || y.startedAt) - (x.submittedAt || x.startedAt));
+  send(res, 200, { student: publicUser(stu), attempts });
+});
+
+/* ======== DATA BACKUP (teacher) ======== */
+route('GET', '/api/admin/export', async ({ user, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const copy = Object.assign({}, db, { sessions: {} }); // never export session tokens
+  send(res, 200, copy);
+});
+
+route('POST', '/api/admin/import', async ({ user, req, body, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const b = (body && body.data && body.data.users) ? body.data : body;
+  if (!b || !Array.isArray(b.users) || !Array.isArray(b.quizzes) ||
+      typeof b.questions !== 'object' || !Array.isArray(b.attempts)) {
+    return send(res, 400, { error: 'Invalid backup file — expected an OQAS database export (JSON).' });
+  }
+  db = {
+    users: b.users,
+    quizzes: b.quizzes,
+    questions: b.questions || {},
+    attempts: b.attempts,
+    notifications: Array.isArray(b.notifications) ? b.notifications : [],
+    sessions: {}
+  };
+  // keep the importing teacher signed in after the swap
+  const m = String(req.headers['authorization'] || '').match(/^Bearer (.+)$/);
+  if (m && db.users.some((u) => u.id === user.id)) db.sessions[m[1]] = { userId: user.id, createdAt: now() };
+  saveDb();
+  send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
 });
 
 /* ======== NOTIFICATIONS (teacher) ======== */

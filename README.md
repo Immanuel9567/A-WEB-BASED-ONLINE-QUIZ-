@@ -65,6 +65,14 @@ New accounts (either role) can be created from the sign-in page.
 - Answers auto-saved to the server on every click (survives refresh/crash).
 - Attempt limits enforced; resume of interrupted attempts.
 
+**Navigation & roster (teacher)**
+- **Sidebar navigation** on every app screen for quick access (collapses to a top bar on phones).
+- **Full-width desktop layout** — the workspace uses the whole screen on large monitors.
+- **Enrolled students list** — every registered student with joined date, quizzes taken,
+  attempts, average, best score and last activity; exportable as CSV.
+- **Per-student quiz history** — click any student to see their full attempt history with
+  scores, outcomes, timing and integrity flags, and jump straight to each result review.
+
 **Automated grading & real-time results**
 - Grading runs server-side the instant an attempt is submitted.
 - A 10-second background sweeper auto-grades expired attempts even if the student closes
@@ -160,6 +168,10 @@ New accounts (either role) can be created from the sign-in page.
 | `GET /api/quizzes/:id/monitor` | teacher | Live session snapshot (summary + rows + not-started) |
 | `GET /api/quizzes/:id/attempts` | teacher | Graded attempts table |
 | `GET /api/quizzes/:id/analytics` | teacher | Stats, distribution, item analysis, leaderboard |
+| `GET /api/students` | teacher | Enrolled students with aggregate stats |
+| `GET /api/students/:id/history` | teacher | One student's full attempt history |
+| `GET /api/admin/export` | teacher | Download full database (backup) |
+| `POST /api/admin/import` | teacher | Restore database from a backup |
 | `GET /api/notifications` | teacher | Notifications grouped by quiz + unread count |
 | `POST /api/notifications/read` | teacher | Mark one / all as read |
 | `DELETE /api/notifications` | teacher | Clear all notifications |
@@ -191,7 +203,8 @@ quiz-system/
     ├── dashboard.html     # student home (quizzes, results, leaderboard)
     ├── quiz.html          # timed quiz runner (autosave, tab-switch policy)
     ├── result.html        # instant result sheet + answer review
-    ├── teacher.html       # quiz management dashboard
+    ├── students.html      # enrolled students + per-student quiz history
+    ├── teacher.html       # quiz management dashboard + data backup/restore
     ├── builder.html       # question bank editor + security kit + drafts
     └── insights.html      # live monitor · results + CSV · analytics
 ```
@@ -214,6 +227,25 @@ Deliberate simplifications, and how each would be hardened in production:
 
 **Run note:** the server binds `0.0.0.0` on port 3000 (`PORT` env overrides it).
 All state lives in `data/db.json` — delete the file to reset to a fresh seed.
+
+### Data & storage — read this before relying on saved data
+
+This prototype deliberately has **no cloud database**: everything (users, quizzes, questions,
+attempts, notifications) lives in one JSON file on the server, `data/db.json`. That means:
+
+- **Restarting/redeploying the server** (or resetting a sandbox/preview environment) can
+  revert the file to an earlier state — quizzes created since then would be lost.
+- The file is **git-ignored**, so it is not part of the GitHub repository.
+
+To protect your work, the teacher dashboard has a **Data & backup** panel:
+
+- **Download backup** — exports the entire database as a single JSON file.
+- **Restore backup** — imports a backup file and replaces the current database
+  (the importing teacher stays signed in; everyone else signs in again).
+
+Recommended habit: after creating quizzes or finishing an assessment session, download a
+backup. For permanent, multi-device storage in production, move to a hosted database —
+see the table above (PostgreSQL/MySQL, or attach a persistent disk on Render).
 
 ---
 

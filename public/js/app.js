@@ -8,6 +8,7 @@
 
   /* ---------------- icon pack (single, uniform 24×24 stroke set) ----------- */
   var P = {
+    home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
     check: '<polyline points="20 6 9 17 4 12"/>',
     checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
@@ -33,6 +34,7 @@
     edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
     trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
     globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
     send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
     alertTriangle: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
@@ -50,7 +52,8 @@
     externalLink: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
     refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
     flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
-    helpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>'
+    helpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'
   };
   window.icon = function (name, size) {
     var s = size || 18;
@@ -149,8 +152,8 @@
     return me.user;
   };
 
-  /* ---------------- navbar (+ teacher notification bell) ------------------ */
-  var LOGO = '<svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  /* ---------------- sidebar (+ teacher notification bell) ----------------- */
+  var LOGO = '<svg width="28" height="28" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   window.navbar = function (user, active) {
     var el = document.getElementById('nav');
@@ -158,17 +161,40 @@
     var isTeacher = user.role === 'teacher';
     var home = isTeacher ? 'teacher.html' : 'dashboard.html';
     var initials = user.name.trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
+
+    function item(key, href, ic, label) {
+      return '<a class="sb-item' + (active === key ? ' on' : '') + '" href="' + href + '">' +
+        icon(ic, 18) + '<span>' + label + '</span></a>';
+    }
+    var links = isTeacher ? [
+      item('dashboard', 'teacher.html', 'home', 'Dashboard'),
+      item('students', 'students.html', 'users', 'Students'),
+      item('create', 'teacher.html?create=1', 'plus', 'Create quiz')
+    ] : [
+      item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
+      item('results', 'dashboard.html#results', 'fileText', 'My results'),
+      item('leaderboard', 'dashboard.html#leaderboard', 'award', 'Leaderboard')
+    ];
+
     el.innerHTML =
-      '<header class="topnav"><div class="container navrow">' +
-      '<a class="brand" href="' + home + '">' + LOGO + '<span>OQAS</span></a>' +
-      '<nav class="navlinks"><a class="' + (active === 'dashboard' ? 'on' : '') + '" href="' + home + '">Dashboard</a></nav>' +
-      '<div class="navuser">' +
-      (isTeacher ? '<div class="bellwrap"><button class="iconbtn" id="bellBtn" title="Notifications" aria-label="Notifications">' + icon('bell', 21) + '<span class="belldot" id="bellDot" hidden></span></button><div class="notifpanel" id="notifPanel" hidden></div></div>' : '') +
-      '<span class="uchip"><span class="avatar">' + esc(initials) + '</span>' +
-      '<span class="uname">' + esc(user.name) + '</span>' +
-      '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span>' +
-      '<button class="btn ghost sm" id="navLogout">' + icon('logout', 16) + ' Log out</button></div>' +
-      '</div></header>';
+      '<aside class="sidebar">' +
+      '<div class="sb-head">' +
+      '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
+      (isTeacher
+        ? '<div class="bellwrap"><button class="iconbtn" id="bellBtn" title="Notifications" aria-label="Notifications">' +
+          icon('bell', 20) + '<span class="belldot" id="bellDot" hidden></span></button></div>'
+        : '') +
+      '</div>' +
+      '<div class="sb-label">Menu</div>' +
+      '<nav class="sb-nav">' + links.join('') + '</nav>' +
+      '<div class="sb-foot">' +
+      '<div class="uchip"><span class="avatar">' + esc(initials) + '</span>' +
+      '<span class="utxt"><b>' + esc(user.name) + '</b>' +
+      '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span></div>' +
+      '<button class="btn ghost sm" id="navLogout">' + icon('logout', 15) + '<span class="lbl">Log out</span></button>' +
+      '</div>' +
+      '<div class="notifpanel" id="notifPanel" hidden></div>' +
+      '</aside>';
 
     document.getElementById('navLogout').onclick = async function () {
       try { await POST('/api/auth/logout'); } catch (e) {}
@@ -190,7 +216,7 @@
     var btn = document.getElementById('bellBtn');
     var panel = document.getElementById('notifPanel');
     var dot = document.getElementById('bellDot');
-    var open = false, lastUnread = null, latestSeen = null;
+    var open = false, latestSeen = null;
 
     btn.onclick = async function (e) {
       e.stopPropagation();
@@ -199,8 +225,9 @@
       if (open) { await refresh(); markAllRead(); }
     };
     document.addEventListener('click', function (e) {
-      if (open && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
-        open = false; panel.hidden = true;
+      if (open && !panel.contains(e.target) && !btn.contains(e.target)) {
+        open = false;
+        panel.hidden = true;
       }
     });
 
@@ -252,13 +279,11 @@
         var d = await GET('/api/notifications');
         paintDot(d.unread);
         if (open) renderPanel(d);
-        // live toast when a new submission lands while the teacher is on any page
         var newest = d.groups[0] && d.groups[0].items[0];
         if (newest && latestSeen !== null && newest.id !== latestSeen) {
           toast('<b>' + esc(newest.studentName) + '</b> ' + notifVerb(newest.type) + ' — ' + esc(newest.quizTitle) + ' (' + fmtPct(newest.percent) + ')', 'info');
         }
         if (newest) latestSeen = newest.id;
-        lastUnread = d.unread;
       } catch (e) { /* signed out or offline — ignore */ }
     }
 
