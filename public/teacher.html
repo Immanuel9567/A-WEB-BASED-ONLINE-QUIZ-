@@ -20,7 +20,7 @@
 
   <section class="statgrid" id="stats"></section>
 
-  <h2 class="sec">My class</h2>
+__X__
   <section class="card tight" id="classCard"><p class="small muted skeleton">Loading…</p></section>
 
   <h2 class="sec">My quizzes</h2>
@@ -188,56 +188,56 @@
         var r = await POST('/api/admin/import', parsed);
         toast('Database restored — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
         await refresh();
-        loadClass();
+        loadClasses();
       } catch (err) { toast(err.message, 'bad'); }
     };
     reader.readAsText(f);
     this.value = '';
   };
 
-  /* ---- my class (join code) ---- */
+  /* ---- my classes (multi) ---- */
   var classCard = document.getElementById('classCard');
-  async function loadClass() {
+  async function loadClasses() {
     try {
       var d = await GET('/api/classes/mine');
-      if (!d.class) {
-        classCard.innerHTML =
-          '<div class="row" style="flex-wrap:wrap;align-items:flex-start">' +
-          '<div style="flex:1;min-width:240px"><b style="font-size:15px">Create your class</b>' +
-          '<p class="small muted" style="margin:4px 0 0">Your class gets a unique join code — students use it to join and see your class quizzes.</p></div>' +
-          '<div class="row"><input id="clsName" type="text" placeholder="e.g. JSS 2 Blue" style="min-width:170px">' +
-          '<button class="btn primary" id="clsGo"></button></div></div>';
-        document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Create class';
-        document.getElementById('clsGo').onclick = async function () {
-          this.disabled = true;
-          try {
-            var r = await POST('/api/classes', { name: document.getElementById('clsName').value });
-            toast('Class created — share code ' + r.class.code + ' with your students');
-            loadClass();
-          } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
-        };
-        return;
-      }
-      var c = d.class;
+      var list = d.classes || [];
+      var rows = list.map(function (c) {
+        return '<div class="row clsrow" style="margin-bottom:10px">' +
+          (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span>' : '') +
+          '<div style="flex:1;min-width:160px"><b>' + esc(c.name) + '</b>' +
+          '<div class="hintline">Code <b class="mono">' + esc(c.code) + '</b> &middot; ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + '</div></div>' +
+          '<button class="btn sm" data-copy="' + esc(c.code) + '">' + icon('clipboardCheck', 13) + ' Copy code</button>' +
+          '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('users', 13) + ' Open</a>' +
+          '</div>';
+      }).join('');
       classCard.innerHTML =
-        '<div class="row" style="flex-wrap:wrap;align-items:center">' +
-        '<div style="flex:1;min-width:230px">' +
-        '<b style="font-size:15px">' + esc(c.name) + '</b>' +
-        '<div class="hintline">' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + ' — students join with this code</div></div>' +
-        '<div class="codebox"><span class="code">' + esc(c.code) + '</span>' +
-        '<button class="btn sm" id="copyCode"></button></div>' +
-        '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('users', 14) + ' Open class</a>' +
+        '<div class="row" style="flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:1;min-width:260px">' +
+        (rows || '<p class="small muted" style="margin:0 0 6px">No classes yet — your first class gets a unique join code students use to join.</p>') +
+        '</div>' +
+        '<div class="row"><input id="clsName" type="text" placeholder="New class name…" style="min-width:160px">' +
+        '<button class="btn primary" id="clsGo"></button></div>' +
         '</div>';
-      document.getElementById('copyCode').innerHTML = icon('clipboardCheck', 14) + ' Copy';
-      document.getElementById('copyCode').onclick = function () {
-        try { navigator.clipboard.writeText(c.code); toast('Class code copied — ' + c.code); }
-        catch (e) { toast('Class code: ' + c.code, 'info'); }
+      document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Add class';
+      document.getElementById('clsGo').onclick = async function () {
+        this.disabled = true;
+        try {
+          var r = await POST('/api/classes', { name: document.getElementById('clsName').value });
+          toast('Class created — share code ' + r.class.code + ' with your students');
+          loadClasses();
+        } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
       };
+      $$('[data-copy]', classCard).forEach(function (b) {
+        b.onclick = function () {
+          try { navigator.clipboard.writeText(b.getAttribute('data-copy')); toast('Class code copied — ' + b.getAttribute('data-copy')); }
+          catch (e) { toast('Class code: ' + b.getAttribute('data-copy'), 'info'); }
+        };
+      });
     } catch (err) {
-      classCard.innerHTML = '<p class="small muted">Could not load class info.</p>';
+      classCard.innerHTML = '<p class="small muted">Could not load classes.</p>';
     }
   }
-  loadClass();
+  loadClasses();
 
   /* ---- cloud save ---- */
   var cloudBox = document.getElementById('cloudBox');
@@ -294,7 +294,7 @@
         var r = await POST('/api/admin/cloud/restore', {});
         toast('Restored from cloud — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
         await refresh();
-        loadClass();
+        loadClasses();
         loadCloud();
         this.disabled = false;
         return;

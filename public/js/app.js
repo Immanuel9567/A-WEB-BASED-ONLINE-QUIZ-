@@ -53,7 +53,12 @@
     refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
     flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
     helpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
-    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'
+    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+    eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+    volume: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+    volumeX: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+    chevronsLeft: '<polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'
   };
   window.icon = function (name, size) {
     var s = size || 18;
@@ -137,6 +142,58 @@
     return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
   };
 
+  /* ---------------- password visibility toggle ---------------------------- */
+  window.pwField = function (inputId) {
+    var input = document.getElementById(inputId);
+    if (!input || input.getAttribute('data-pw')) return;
+    input.setAttribute('data-pw', '1');
+    var wrap = document.createElement('div');
+    wrap.className = 'pwwrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pwbtn';
+    btn.setAttribute('aria-label', 'Show password');
+    btn.innerHTML = icon('eye', 16);
+    var on = false;
+    btn.onclick = function () {
+      on = !on;
+      input.type = on ? 'text' : 'password';
+      btn.innerHTML = icon(on ? 'eyeOff' : 'eye', 16);
+      btn.setAttribute('aria-label', on ? 'Hide password' : 'Show password');
+    };
+    wrap.appendChild(btn);
+  };
+
+  /* ---------------- sound alert (Web Audio, no files) ---------------------- */
+  var audioCtx = null;
+  window.ding = function () {
+    if (Store.getItem('oqas_sound') === '0') return; // muted
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') return; // waits for first user gesture
+      var t0 = audioCtx.currentTime;
+      [[880, 0], [1174.7, 0.12]].forEach(function (tone) {
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.value = tone[0];
+        g.gain.setValueAtTime(0.0001, t0 + tone[1]);
+        g.gain.exponentialRampToValueAtTime(0.18, t0 + tone[1] + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + tone[1] + 0.5);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t0 + tone[1]); o.stop(t0 + tone[1] + 0.55);
+      });
+    } catch (e) { /* audio unavailable */ }
+  };
+  // browsers block audio until the user interacts once — unlock on first gesture
+  document.addEventListener('pointerdown', function unlock() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }, { once: true, capture: true });
+
   /* ---------------- auth guard ------------------------------------------- */
   window.requireLogin = async function (role) {
     var me = null;
@@ -185,6 +242,7 @@
       '<a class="brand" href="' + home + '" title="OQAS home">' + LOGO + '<span>OQAS</span></a>' +
       '<div class="bellwrap"><button class="iconbtn" id="bellBtn" title="Notifications" aria-label="Notifications">' +
       icon('bell', 20) + '<span class="belldot" id="bellDot" hidden></span></button></div>' +
+      '<button class="iconbtn sb-toggle" id="sbToggle" title="Collapse menu" aria-label="Collapse menu">' + icon('chevronsLeft', 18) + '</button>' +
       '</div>' +
       '<div class="sb-label">Menu</div>' +
       '<nav class="sb-nav">' + links.join('') + '</nav>' +
@@ -215,6 +273,22 @@
 
     fillSidebarClasses(user);
     setupBell(user);
+
+    // collapsible sidebar (desktop) — state remembered
+    var sbToggle = document.getElementById('sbToggle');
+    var sbMin = Store.getItem('oqas_sbmin') === '1';
+    document.body.classList.toggle('sb-min', sbMin);
+    if (sbToggle) sbToggle.onclick = function () {
+      sbMin = !document.body.classList.contains('sb-min');
+      document.body.classList.toggle('sb-min', sbMin);
+      Store.setItem('oqas_sbmin', sbMin ? '1' : '0');
+      sbToggle.title = sbMin ? 'Expand menu' : 'Collapse menu';
+      sbToggle.innerHTML = icon(sbMin ? 'chevronRight' : 'chevronsLeft', 18);
+    };
+    if (sbToggle) {
+      sbToggle.title = sbMin ? 'Expand menu' : 'Collapse menu';
+      sbToggle.innerHTML = icon(sbMin ? 'chevronRight' : 'chevronsLeft', 18);
+    }
   };
 
   async function fillSidebarClasses(user) {
@@ -230,7 +304,7 @@
           icon('bookOpen', 18) + '<span>' + esc(c.name) + '</span></a>';
       });
       if (items.length) {
-        lbl.textContent = user.role === 'teacher' ? 'My class' : 'My classes';
+        lbl.textContent = 'My classes';
         lbl.hidden = false;
         box.innerHTML = items.join('');
       }
@@ -271,12 +345,16 @@
           '<div class="notif-empty">' + icon('bellOff', 30) + '<div style="margin-top:8px">No notifications yet.</div></div>';
         return;
       }
+      var soundOn = Store.getItem('oqas_sound') !== '0';
       var html = '<div class="notif-head">' + icon('bell', 18) + ' Notifications' +
         '<span class="spacer"></span><div class="notif-actions">' +
+        '<button class="btn ghost sm" id="soundToggle" title="' + (soundOn ? 'Mute alerts' : 'Unmute alerts') + '">' +
+        icon(soundOn ? 'volume' : 'volumeX', 14) + '</button>' +
         '<button class="btn ghost sm" id="clearNotifs" title="Clear all">' + icon('trash', 14) + '</button></div></div>' +
         '<div class="notif-body">';
       data.groups.forEach(function (g) {
-        html += '<div class="notif-group-title">' + icon('fileText', 13) + ' ' + esc(g.quizTitle) +
+        html += '<div class="notif-group-title">' +
+          (g.color ? '<span class="classdot" style="background:' + esc(g.color) + '"></span>' : icon('fileText', 13)) + ' ' + esc(g.quizTitle) +
           (g.unread ? ' <span class="chip">' + g.unread + ' new</span>' : '') + '</div>';
         g.items.slice(0, 12).forEach(function (n) {
           if (n.type === 'published') {
@@ -309,6 +387,14 @@
         await DEL('/api/notifications');
         await refresh();
       };
+      var sndBtn = document.getElementById('soundToggle');
+      if (sndBtn) sndBtn.onclick = function (e) {
+        e.stopPropagation();
+        var nowOn = Store.getItem('oqas_sound') !== '0';
+        Store.setItem('oqas_sound', nowOn ? '0' : '1');
+        if (!nowOn) ding(); // confirmation chime when re-enabling
+        refresh();
+      };
     }
 
     function paintDot(unread) {
@@ -316,20 +402,56 @@
       else dot.hidden = true;
     }
 
+    /* seen-state persisted across page reloads, so nothing pops up twice and
+       nothing is missed after a refresh — notifications created since the
+       teacher's last visit still pop (with sound) when they come back */
+    var seenAt = Number(Store.getItem('oqas_seenat') || 0);
+    if (!seenAt) { Store.setItem('oqas_seenat', String(Date.now())); seenAt = Date.now(); }
+
+    function popup(n, color) {
+      var pop = document.createElement('div');
+      pop.className = 'notifpop';
+      if (color) pop.style.borderLeftColor = color;
+      var isPub = n.type === 'published';
+      pop.innerHTML =
+        '<span class="npico">' + icon(notifIcon(n.type), 20) + '</span>' +
+        '<div class="npbody"><div class="nptitle">' +
+        (isPub ? 'New quiz: <b>' + esc(n.quizTitle) + '</b>' : '<b>' + esc(n.studentName) + '</b> ' + notifVerb(n.type)) +
+        '</div><div class="npsub">' +
+        (isPub ? 'Published by ' + esc(n.teacherName || 'your teacher') + ' — take it from your dashboard'
+               : esc(n.quizTitle) + ' · <b>' + fmtPct(n.percent) + '</b> · ' + (n.passed ? 'Passed' : 'Failed')) +
+        '</div></div>' +
+        '<button class="btn sm primary" data-open>' + icon('eye', 13) + ' View</button>';
+      document.body.appendChild(pop);
+      requestAnimationFrame(function () { pop.classList.add('in'); });
+      var kill = function () { pop.classList.remove('in'); setTimeout(function () { pop.remove(); }, 300); };
+      var t = setTimeout(kill, 8000);
+      pop.querySelector('[data-open]').onclick = function () {
+        clearTimeout(t);
+        try { POST('/api/notifications/read', { id: n.id }); } catch (e) {}
+        location.href = isPub ? 'dashboard.html' : 'result.html?attempt=' + (n.attemptId || '');
+        kill();
+      };
+      pop.onclick = function (e) { if (e.target === pop) { clearTimeout(t); kill(); } };
+    }
+
     async function refresh() {
       try {
         var d = await GET('/api/notifications');
         paintDot(d.unread);
         if (open) renderPanel(d);
-        var newest = d.groups[0] && d.groups[0].items[0];
-        if (newest && latestSeen !== null && newest.id !== latestSeen) {
-          if (newest.type === 'published') {
-            toast('New quiz published: <b>' + esc(newest.quizTitle) + '</b> — take it from your dashboard', 'info');
-          } else {
-            toast('<b>' + esc(newest.studentName) + '</b> ' + notifVerb(newest.type) + ' — ' + esc(newest.quizTitle) + ' (' + fmtPct(newest.percent) + ')', 'info');
-          }
+        // pop up (and sound) everything that happened since the last visit
+        var fresh = [];
+        d.groups.forEach(function (g) {
+          g.items.forEach(function (n) { if (n.createdAt > seenAt) fresh.push({ n: n, color: g.color }); });
+        });
+        fresh.sort(function (a, b) { return a.n.createdAt - b.n.createdAt; });
+        fresh.slice(-3).forEach(function (f) { popup(f.n, f.color); });
+        if (fresh.length) {
+          ding();
+          var newestTs = Math.max.apply(null, fresh.map(function (f) { return f.n.createdAt; }));
+          if (newestTs > seenAt) { seenAt = newestTs; Store.setItem('oqas_seenat', String(seenAt)); }
         }
-        if (newest) latestSeen = newest.id;
       } catch (e) { /* signed out or offline — ignore */ }
     }
 
@@ -340,7 +462,10 @@
 
     refresh();
     if (window.__oqasBellTimer) clearInterval(window.__oqasBellTimer);
-    window.__oqasBellTimer = setInterval(function () { if (!document.hidden) refresh(); }, 10000);
+    window.__oqasBellTimer = setInterval(function () { if (!document.hidden) refresh(); }, 5000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refresh(); // catch up the moment the tab is seen again
+    });
   }
 
   /* ---------------- profile editing modal --------------------------------- */
@@ -358,9 +483,9 @@
         '<div class="field"><label for="pfEmail">Email address</label>' +
         '<input id="pfEmail" type="email" value="' + esc(user.email) + '"></div>' +
         '<div class="field"><label for="pfCur">Current password</label>' +
-        '<input id="pfCur" type="password" autocomplete="current-password" placeholder="Required to save any change"></div>' +
+        '<div class="pwwrap"><input id="pfCur" type="password" autocomplete="current-password" placeholder="Required to save any change"></div></div>' +
         '<div class="field"><label for="pfNew">New password <span class="muted">(optional)</span></label>' +
-        '<input id="pfNew" type="password" autocomplete="new-password" placeholder="Leave blank to keep your current password">' +
+        '<div class="pwwrap"><input id="pfNew" type="password" autocomplete="new-password" placeholder="Leave blank to keep your current password"></div>' +
         '<div class="modal-actions">' +
         '<button type="button" class="btn" data-x>Cancel</button>' +
         '<button type="submit" class="btn primary" id="pfSave">Save changes</button>' +
@@ -369,6 +494,20 @@
       var close = function (v) { ov.remove(); resolve(v); };
       ov.querySelector('[data-x]').onclick = function () { close(null); };
       ov.onclick = function (e) { if (e.target === ov) close(null); };
+      ov.querySelectorAll('.pwwrap input').forEach(function (inp) {
+        var eye = document.createElement('button');
+        eye.type = 'button';
+        eye.className = 'pwbtn';
+        eye.setAttribute('aria-label', 'Show password');
+        eye.innerHTML = icon('eye', 16);
+        var vis = false;
+        eye.onclick = function () {
+          vis = !vis;
+          inp.type = vis ? 'text' : 'password';
+          eye.innerHTML = icon(vis ? 'eyeOff' : 'eye', 16);
+        };
+        inp.parentNode.appendChild(eye);
+      });
       ov.querySelector('#profForm').onsubmit = async function (e) {
         e.preventDefault();
         var btn = ov.querySelector('#pfSave');

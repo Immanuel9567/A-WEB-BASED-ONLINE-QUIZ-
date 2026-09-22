@@ -39,6 +39,7 @@
         <span class="chip" id="qType"></span>
       </div>
       <div class="qtext" id="qText"></div>
+      <img id="qImg" class="qimg" alt="" hidden>
       <div class="opts" id="qOpts"></div>
     </div>
 
@@ -111,6 +112,8 @@
       q.type === 'single' ? 'Choose one answer' :
       q.type === 'multiple' ? 'Select ALL that apply' : 'True or False';
     document.getElementById('qText').textContent = q.text;
+    var qim = document.getElementById('qImg');
+    if (q.img) { qim.src = q.img; qim.hidden = false; } else { qim.hidden = true; qim.removeAttribute('src'); }
 
     var given = answers[q.id];
     var multi = q.type === 'multiple';

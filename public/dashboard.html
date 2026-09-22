@@ -125,6 +125,8 @@
   }
 
   function card(q) {
+    var cls = (q.classInfo && q.classInfo.length) ? q.classInfo : null;
+    var cc = cls && cls[0] && cls[0].color ? cls[0].color : '';
     var actions = '';
     if (q.inProgressAttemptId) {
       actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.inProgressAttemptId + '">' + icon('chevronRight', 15) + ' Resume attempt</a>';
@@ -141,8 +143,11 @@
         (q.bestPassed ? 'Passed' : 'Failed') + ' &middot; best ' + fmtPct(q.bestPercent) + '</span>';
     }
     return '' +
-      '<div class="card hover">' +
+      '<div class="card hover classcard"' + (cc ? ' style="--cc:' + esc(cc) + '"' : '') + '>' +
       '<div class="row" style="margin-bottom:9px"><span class="chip">' + icon('fileText', 13) + ' ' + esc(q.subject) + '</span>' +
+      (cls ? cls.map(function (c) {
+        return '<span class="chip classchip">' + (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>';
+      }).join('') : '') +
       '<span class="spacer"></span>' + outcome + '</div>' +
       '<h3 style="font-size:17.5px">' + esc(q.title) + '</h3>' +
       '<p class="muted small" style="min-height:38px">' + esc(q.description || '') + '</p>' +

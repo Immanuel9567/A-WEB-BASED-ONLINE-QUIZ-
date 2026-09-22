@@ -41,9 +41,9 @@
             <input id="qsSubject" type="text" placeholder="e.g. Computer Science (CSC 204)">
           </div>
           <div class="field">
-            <label for="qsVis">Visible to</label>
-            <select id="qsVis"><option value="">All students</option></select>
-            <div class="hint">Class quizzes only appear to students who joined that class.</div>
+            <label>Visible to</label>
+            <div id="visWrap" class="viswrap"></div>
+            <div class="hint">Leave "All students" checked for everyone, or pick one or more of your classes.</div>
           </div>
         </div>
         <div class="field">
@@ -84,7 +84,7 @@
         <button class="btn sm primary block" id="saveSettings" style="margin-top:10px"></button>
       </div>
 
-      <div class="card" style="position:sticky;top:80px">
+      <div class="card" id="qlistCard" style="position:sticky;top:80px">
         <div class="row" style="margin-bottom:12px">
           <b style="font-size:15px">Questions</b>
           <span class="spacer"></span>
@@ -95,7 +95,7 @@
     </section>
 
     <!-- ============ right: question editor ============ -->
-    <section class="card">
+    <section class="card" id="editorCard">
       <h3 id="formTitle" style="font-size:17px">Add a new question</h3>
       <p class="small muted" id="draftNote" hidden></p>
       <div class="form-err" id="formErr" hidden></div>
@@ -112,6 +112,17 @@
       <div class="field">
         <label for="fText">Question text</label>
         <textarea id="fText" placeholder="Type the question…"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Picture (optional)</label>
+        <div class="row">
+          <button class="btn sm" type="button" id="imgBtn"></button>
+          <button class="btn sm danger" type="button" id="imgRemove" hidden></button>
+          <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        </div>
+        <img id="imgPrev" class="qimg" alt="" hidden>
+        <div class="hint">Attach a diagram or screenshot — it is resized automatically and shown with the question.</div>
       </div>
 
       <div id="optsWrap">
@@ -172,17 +183,44 @@
   document.getElementById('resetBtn').innerHTML = icon('x', 14) + ' Cancel edit';
   $('#backLink').href = 'teacher.html';
 
-  /* ---- visibility: the teacher's class (if any) ---- */
-  var qsVis = document.getElementById('qsVis');
+  /* ---- visibility: multi-class selector (all students, or any of my classes) ---- */
+  var visWrap = document.getElementById('visWrap');
+  var myClasses = [];
   try {
     var cd = await GET('/api/classes/mine');
-    if (cd.class) {
-      qsVis.innerHTML = '<option value="">All students</option>' +
-        '<option value="' + esc(cd.class.id) + '">My class only — ' + esc(cd.class.name) + '</option>';
-    } else {
-      qsVis.disabled = true;
+    myClasses = cd.classes || [];
+  } catch (err) {}
+  function renderVis(selected) {
+    var sel = selected || [];
+    var html = '<label class="visopt"><input type="checkbox" id="visAll"' + (!sel.length ? ' checked' : '') + '><span>All students</span></label>';
+    myClasses.forEach(function (c) {
+      html += '<label class="visopt"><input type="checkbox" data-cls="' + esc(c.id) + '"' + (sel.indexOf(c.id) >= 0 ? ' checked' : '') + '>' +
+        (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') +
+        '<span>' + esc(c.name) + '</span></label>';
+    });
+    if (!myClasses.length) html += '<div class="hint" style="margin:4px 0 0">No classes yet — create one on your dashboard to assign quizzes to a class.</div>';
+    visWrap.innerHTML = html;
+    var allEl = document.getElementById('visAll');
+    function sync() {
+      var anyCls = $$('[data-cls]', visWrap).some(function (b) { return b.checked; });
+      if (allEl) allEl.checked = !anyCls;
+      $$('[data-cls]', visWrap).forEach(function (b) { b.disabled = allEl && allEl.checked; });
     }
-  } catch (err) { qsVis.disabled = true; }
+    if (allEl) allEl.onchange = function () {
+      $$('[data-cls]', visWrap).forEach(function (b) { b.checked = false; });
+      sync();
+    };
+    $$('[data-cls]', visWrap).forEach(function (b) {
+      b.onchange = function () { if (b.checked && allEl) allEl.checked = false; sync(); };
+    });
+    sync();
+  }
+  function selectedClasses() {
+    var allEl = document.getElementById('visAll');
+    if (allEl && allEl.checked) return [];
+    return $$('[data-cls]', visWrap).filter(function (b) { return b.checked; }).map(function (b) { return b.getAttribute('data-cls'); });
+  }
+  renderVis([]);
 
   var quiz = null;
   var questions = [];
@@ -191,6 +229,8 @@
     document.getElementById('qzMeta').textContent = 'Set the basics below, create the quiz, then add your questions.';
     document.getElementById('insightsLink').hidden = true;
     document.getElementById('pubBtn').hidden = true;
+    document.getElementById('qlistCard').hidden = true;
+    document.getElementById('editorCard').hidden = true;
   } else {
     var data;
     try { data = await GET('/api/quizzes/' + quizId + '/questions'); }
@@ -209,7 +249,7 @@
     document.getElementById('qsDur').value = quiz.durationMin;
     document.getElementById('qsPass').value = quiz.passMark;
     document.getElementById('qsAtt').value = quiz.attemptsAllowed;
-    qsVis.value = (quiz.classes && quiz.classes.length) ? quiz.classes[0] : '';
+    renderVis(quiz.classes || []);
   }
 
   /* ================= publish toggle (edit mode) ================= */
@@ -253,7 +293,7 @@
       shuffle: setShuffle.checked,
       shuffleOptions: setShuffleOpt.checked,
       tabSwitchPolicy: setTab.value,
-      classes: qsVis.value ? [qsVis.value] : []
+      classes: selectedClasses()
     };
     try {
       if (creating) {
@@ -272,7 +312,49 @@
     btn.disabled = false;
   };
 
-  /* ================= question list  /* ================= question list ================= */
+  /* ================= question picture ================= */
+  var pendingImg = '';
+  var imgBtn = document.getElementById('imgBtn');
+  var imgFile = document.getElementById('imgFile');
+  var imgPrev = document.getElementById('imgPrev');
+  var imgRemove = document.getElementById('imgRemove');
+  imgBtn.innerHTML = icon('image', 14) + ' Attach picture';
+  imgRemove.innerHTML = icon('trash', 13) + ' Remove';
+  function paintImg() {
+    if (pendingImg) { imgPrev.src = pendingImg; imgPrev.hidden = false; imgRemove.hidden = false; }
+    else { imgPrev.hidden = true; imgPrev.removeAttribute('src'); imgRemove.hidden = true; }
+  }
+  imgBtn.onclick = function () { imgFile.click(); };
+  imgRemove.onclick = function () { pendingImg = ''; paintImg(); };
+  imgFile.onchange = function () {
+    var f = this.files && this.files[0];
+    this.value = '';
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { toast('That image is too large — pick one under 8 MB.', 'bad'); return; }
+    var rd = new FileReader();
+    rd.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var scale = Math.min(1, 900 / img.width);
+        var cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * scale));
+        cv.height = Math.max(1, Math.round(img.height * scale));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        var pngSmall = /^data:image\/png/.test(rd.result) && rd.result.length < 120000;
+        pendingImg = pngSmall ? rd.result : cv.toDataURL('image/jpeg', 0.72);
+        if (pendingImg.length > 900000) {
+          toast('Image still too large after resizing — try a smaller picture.', 'bad');
+          pendingImg = '';
+        }
+        paintImg();
+      };
+      img.onerror = function () { toast('Could not read that image file.', 'bad'); };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  };
+
+  /* ================= question list ================= */
   var TYPE_LABEL = { single: 'Single choice', multiple: 'Multiple response', truefalse: 'True / False' };
   function renderList() {
     var drafts = questions.filter(function (q) { return q.draft; });
@@ -291,6 +373,7 @@
             return '<div class="oo' + (correct ? ' correct' : '') + '">' + LETTER(oi) + '. ' + esc(o) + '</div>';
           }).join('');
       return '<div class="qmini' + (q.draft ? ' isdraft' : '') + '">' +
+        (q.img ? '<img class="qthumb" src="' + q.img + '" alt="">' : '') +
         '<div class="row" style="margin-bottom:7px">' +
         '<span class="chip">' + (i + 1) + '</span>' +
         '<span class="chip">' + TYPE_LABEL[q.type] + '</span>' +
@@ -430,6 +513,7 @@
     document.getElementById('resetBtn').hidden = true;
     document.getElementById('draftNote').hidden = true;
     fType.value = 'single'; fText.value = ''; fPoints.value = 1; fExpl.value = '';
+    pendingImg = ''; paintImg();
     optRows.innerHTML = '';
     addOptRow('', false); addOptRow('', false); addOptRow('', false); addOptRow('', false);
     document.getElementById('tfTrue').click();
@@ -440,6 +524,8 @@
 
   function startEdit(q) {
     editingId = q.id;
+    pendingImg = q.img || '';
+    paintImg();
     editingDraft = !!q.draft;
     document.getElementById('formTitle').textContent = q.draft ? 'Finish draft question' : 'Editing question';
     document.getElementById('resetBtn').hidden = false;
@@ -511,6 +597,7 @@
       answer: answer,
       points: Number(fPoints.value) || 1,
       explanation: fExpl.value,
+      img: pendingImg,
       draft: !!asDraft
     };
     var btn = asDraft ? document.getElementById('saveDraftBtn') : document.getElementById('saveBtn');

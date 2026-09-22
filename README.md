@@ -18,17 +18,13 @@ node server.js          # zero dependencies — only Node.js (14+) is required
 # open http://localhost:3000
 ```
 
-The JSON datastore is created and seeded automatically at `data/db.json` on first run.
+The JSON datastore is created automatically at `data/db.json` on first run.
 
-### Demo accounts
+### First run — no seeded accounts
 
-| Role | Email | Password | What to try |
-|---|---|---|---|
-| Teacher | `teacher@demo.com` | `teach123` | Create a quiz → add questions → publish → open **Insights → Live monitor** |
-| Student | `student@demo.com` | `study123` | Take *CSC 101* or *Web Technology* → watch the instant result sheet |
-| More students | `amara@demo.com`, `tunde@demo.com`, `fatima@demo.com`, `emeka@demo.com` | `study123` | Open two browsers and take a quiz simultaneously to see the live monitor update |
-
-New accounts (either role) can be created from the sign-in page.
+The system starts **completely empty** (no demo users or quizzes). Register the first
+teacher from the sign-in page — you'll name your first class during registration and get
+its join code — then create quizzes and let students register and join with the code.
 
 ---
 
@@ -74,17 +70,32 @@ New accounts (either role) can be created from the sign-in page.
   scores, outcomes, timing and integrity flags, and jump straight to each result review.
 
 **Classes with join codes**
-- Teachers register with a **class name** — OQAS generates a **unique join code** that stays
-  permanently on the teacher dashboard.
-- Students **join classes with a code** (as many classes as they like) from their dashboard,
-  and their joined classes appear in the sidebar for one-click navigation.
-- Quizzes can be visible to **all students** or **one class only**; class quizzes appear just
-  for members, on their dashboard and on the class page.
+- Teachers can run **several classes** — register with your first class name (OQAS generates
+  a **unique join code** for it) and add more from the dashboard at any time.
+- Students **join classes with a code** (as many as they like) from their dashboard, and
+  their joined classes appear in the sidebar for one-click navigation.
+- Quizzes can be visible to **all students** or to **any selection of your classes**; class
+  quizzes appear just for members, tagged with the class name on each quiz card.
+- **Class settings** (gear on the class page): pick a **class colour** and rename the class —
+  the colour tints that class's quiz cards and notifications on student dashboards.
+- **Manage students**: the class page shows every member with their stats, and the teacher
+  can **remove (kick)** a student from the class at any time.
+
+**Questions with pictures**
+- Attach a picture (diagram, screenshot, chart) to any question — it is resized automatically,
+  stored with the question, shown while taking the quiz and on the graded review sheet.
 
 **Profile editing** — every user (teacher or student) can update their name, sign-in email
 and password from the sidebar (click your name at the bottom-left); changes apply instantly
 across the app without a page refresh. Dashboard actions — publish, unpublish, delete,
 restore, joining a class — also update the screen in place.
+
+**Comfort features**
+- **Show/hide password** eye buttons on every password field.
+- **Collapsible sidebar** — collapse it to an icon rail for more workspace (state remembered).
+- **Mobile-tuned layout** — bottom-sheet dialogs, scrollable tables, single-column cards.
+- **Answer explanations** — teachers attach an explanation per question; students see it on
+  the graded review sheet right after submission, together with the question picture.
 
 **Cloud save (encrypted GitHub storage)**
 - Connect a GitHub personal access token once and the **whole database auto-saves to the
@@ -101,8 +112,9 @@ restore, joining a class — also update the screen in place.
   full answer review with explanations.
 - **Teacher notifications** — a bell in the teacher's navbar shows who has completed each
   quiz (submitted, time-expired, or auto-submitted via tab switch), with scores and timing.
-  Multiple notifications are grouped and sorted by quiz; a live toast appears while the
-  teacher is online.
+  **Pop-up cards and a chime sound** announce new submissions the moment they happen — and
+  anything that happened since your last visit pops up when you come back, so submissions
+  are never missed. Sound can be muted from the bell panel.
 - **Student notifications** — students get a bell notification the moment a teacher
   publishes a new quiz.
 - **Live monitor** — who is writing, progress, time left and scores as they land
@@ -194,6 +206,8 @@ restore, joining a class — also update the screen in place.
 | `POST /api/classes` | teacher | Create a class (name) — returns its unique code |
 | `GET /api/classes` | any | Teacher: own class · Student: classes joined |
 | `POST /api/classes/join` | student | Join a class with its code |
+| `PUT /api/classes/:id` | owner teacher | Rename a class / set its colour |
+| `POST /api/classes/:id/kick` | owner teacher | Remove a student from the class |
 | `GET /api/classes/:id` | member | Class detail: quizzes (+ members & stats for the owner) |
 | `GET /api/admin/cloud/status` | teacher | Cloud save connection + last save state |
 | `POST /api/admin/cloud/connect` | teacher | Connect cloud storage (token + passphrase) |
@@ -223,7 +237,7 @@ restore, joining a class — also update the screen in place.
 
 ```
 quiz-system/
-├── server.js              # HTTP server, REST API, grading engine, seed data
+├── server.js              # HTTP server, REST API, grading engine
 ├── package.json           # npm start wrapper (for hosts & Render auto-detect)
 ├── render.yaml            # one-click deploy blueprint
 ├── data/db.json           # JSON datastore (auto-created, git-ignored)
@@ -259,7 +273,7 @@ Deliberate simplifications, and how each would be hardened in production:
 | Scale | Single process | Load-balanced stateless API + message queue for grading |
 
 **Run note:** the server binds `0.0.0.0` on port 3000 (`PORT` env overrides it).
-All state lives in `data/db.json` — delete the file to reset to a fresh seed.
+All state lives in `data/db.json` — delete the file to start completely fresh (empty).
 
 ### Data & storage
 
@@ -315,8 +329,8 @@ Manual steps (same result):
 
 > **Free-plan notes:** the service sleeps after ~15 minutes of inactivity, so the first
 > visit after a pause takes ~30–60 seconds to wake up. The filesystem is also reset on each
-> deploy/restart — the database **re-seeds itself with the demo data automatically**, so the
-> site keeps working (created accounts/quizzes since the last deploy would be lost).
+> deploy/restart — the database resets to empty. Connect **cloud save** (below) so your
+> data is restored automatically on every restart.
 > For persistent data, attach a Render disk mounted at `data/` or move to PostgreSQL (§7).
 >
 > **Other hosts that work the same way:** Koyeb, Railway (paid), Fly.io, or any VPS —

@@ -14,6 +14,7 @@
   <section class="pagehead col">
     <div class="row headactions">
       <a class="btn" href="dashboard.html" id="backLink"></a>
+      <button class="btn" id="clsSettings" hidden></button>
     </div>
     <div>
       <h1 id="cTitle">Class</h1>
@@ -26,7 +27,7 @@
     <div class="row" style="flex-wrap:wrap;align-items:center">
       <div style="flex:1;min-width:230px">
         <b style="font-size:15px">Class join code</b>
-        <div class="hintline">Students enter this code on their dashboard to join the class — new quizzes set to this class appear for members only.</div>
+        <div class="hintline">Students enter this code on their dashboard to join the class — quizzes set to this class appear for members only.</div>
       </div>
       <div class="codebox"><span class="code" id="cCode"></span><button class="btn sm" id="copyCode"></button></div>
     </div>
@@ -39,18 +40,39 @@
     <div class="card skeleton">Loading…</div>
   </section>
 
-  <!-- teacher-owner: members with performance -->
-  <h2 class="sec" id="memHead" hidden>Class members</h2>
+  <!-- teacher-owner: manage students -->
+  <h2 class="sec" id="memHead" hidden>Manage students</h2>
   <section class="card tablecard" id="memCard" hidden>
     <table>
       <thead><tr>
-        <th>Student</th><th>Quizzes</th><th>Attempts</th><th>Average</th><th>Best</th><th>Last activity</th><th></th>
+        <th>Student</th><th>Quizzes</th><th>Attempts</th><th>Average</th><th>Best</th><th>Last activity</th><th style="text-align:right">Actions</th>
       </tr></thead>
       <tbody id="mRows"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
   <p style="margin:26px 2px 50px"></p>
 </main>
+
+<!-- ============ class settings modal (owner) ============ -->
+<div class="overlay" id="clsOverlay" hidden>
+  <div class="modal">
+    <h3>Class settings</h3>
+    <p class="muted small">Pick the class colour and rename it if you like. The colour tints this class's cards and notifications for your students.</p>
+    <div class="form-err" id="clsErr" hidden></div>
+    <div class="field">
+      <label for="clsNameInput">Class name</label>
+      <input id="clsNameInput" type="text" placeholder="e.g. JSS 2 Blue">
+    </div>
+    <div class="field">
+      <label>Class colour</label>
+      <div class="swatches" id="swatches"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="clsCancel">Cancel</button>
+      <button type="button" class="btn primary" id="clsSave">Save settings</button>
+    </div>
+  </div>
+</div>
 
 <script src="js/app.js"></script>
 <script>
@@ -65,67 +87,75 @@
   document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + (isTeacher ? ' Dashboard' : ' My dashboard');
   document.getElementById('backLink').href = isTeacher ? 'teacher.html' : 'dashboard.html';
   document.getElementById('copyCode').innerHTML = icon('clipboardCheck', 14) + ' Copy';
+  document.getElementById('clsSettings').innerHTML = icon('sliders', 15) + ' Settings';
 
-  var d;
-  try { d = await GET('/api/classes/' + classId); }
-  catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = isTeacher ? 'teacher.html' : 'dashboard.html'; }, 1200); return; }
+  var c = null, owner = false, d = null;
+  var PALETTE = ['#1a73e8', '#188038', '#12b5cb', '#a142f4', '#ad1457', '#d93025', '#e8710a', '#f9ab00', '#5f6368'];
+  var pickedColor = null;
 
-  var c = d.class;
-  var owner = isTeacher && c.teacherId === (user.id || user.userId);
-  document.getElementById('cTitle').textContent = c.name;
-  document.getElementById('cMeta').textContent =
-    'Taught by ' + c.teacherName + ' · ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') +
-    ' · ' + d.quizzes.length + ' class quiz' + (d.quizzes.length === 1 ? '' : 'zes');
+  async function loadClassPage() {
+    try { d = await GET('/api/classes/' + classId); }
+    catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = isTeacher ? 'teacher.html' : 'dashboard.html'; }, 1200); return; }
+    c = d.class;
+    owner = isTeacher && c.teacherId === user.id;
 
-  /* ---- teacher owner: code card + member stats ---- */
-  if (owner) {
-    document.getElementById('codeCard').hidden = false;
-    document.getElementById('cCode').textContent = c.code;
-    document.getElementById('copyCode').onclick = function () {
-      try { navigator.clipboard.writeText(c.code); toast('Class code copied — ' + c.code); }
-      catch (e) { toast('Class code: ' + c.code, 'info'); }
-    };
-    document.getElementById('memHead').hidden = false;
-    document.getElementById('memCard').hidden = false;
-    var mb = document.getElementById('mRows');
-    if (!d.members.length) {
-      mb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('users', 34) + '</div>' +
-        'No students have joined yet — share the code <b>&nbsp;' + esc(c.code) + '&nbsp;</b>with your class.</div></td></tr>';
-    } else {
-      mb.innerHTML = d.members.map(function (m) {
-        return '<tr>' +
-          '<td><b>' + esc(m.name) + '</b><br><span class="small muted">' + esc(m.email) + '</span></td>' +
-          '<td>' + m.quizzesTaken + '</td>' +
-          '<td>' + m.attempts + '</td>' +
-          '<td>' + (m.avgPercent != null ? '<b>' + fmtPct(m.avgPercent) + '</b>' : '—') + '</td>' +
-          '<td>' + (m.bestPercent != null ? fmtPct(m.bestPercent) : '—') + '</td>' +
-          '<td class="small muted">' + (m.lastActivity ? fmtWhen(m.lastActivity) : '—') + '</td>' +
-          '<td><a class="btn sm" href="students.html?id=' + m.id + '">' + icon('eye', 13) + ' History</a></td>' +
-          '</tr>';
-      }).join('');
+    document.getElementById('cTitle').innerHTML =
+      (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span> ' : '') + esc(c.name);
+    document.getElementById('cMeta').textContent =
+      'Taught by ' + c.teacherName + ' · ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') +
+      ' · ' + d.quizzes.length + ' class quiz' + (d.quizzes.length === 1 ? '' : 'zes');
+
+    /* ---- owner extras: code card, settings button, manage students ---- */
+    document.getElementById('clsSettings').hidden = !owner;
+    document.getElementById('codeCard').hidden = !owner;
+    if (owner) {
+      document.getElementById('cCode').textContent = c.code;
+      document.getElementById('memHead').hidden = false;
+      document.getElementById('memCard').hidden = false;
+      var mb = document.getElementById('mRows');
+      if (!d.members.length) {
+        mb.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('users', 34) + '</div>' +
+          'No students have joined yet — share the code <b>&nbsp;' + esc(c.code) + '&nbsp;</b>with your class.</div></td></tr>';
+      } else {
+        mb.innerHTML = d.members.map(function (m) {
+          return '<tr>' +
+            '<td><b>' + esc(m.name) + '</b><br><span class="small muted">' + esc(m.email) + '</span></td>' +
+            '<td>' + m.quizzesTaken + '</td>' +
+            '<td>' + m.attempts + '</td>' +
+            '<td>' + (m.avgPercent != null ? '<b>' + fmtPct(m.avgPercent) + '</b>' : '—') + '</td>' +
+            '<td>' + (m.bestPercent != null ? fmtPct(m.bestPercent) : '—') + '</td>' +
+            '<td class="small muted">' + (m.lastActivity ? fmtWhen(m.lastActivity) : '—') + '</td>' +
+            '<td style="text-align:right;white-space:nowrap">' +
+            '<a class="btn sm" href="students.html?id=' + m.id + '">' + icon('eye', 13) + ' History</a>' +
+            '<button class="btn sm danger" data-kick="' + m.id + '" data-name="' + esc(m.name) + '">' + icon('x', 13) + ' Kick</button>' +
+            '</td></tr>';
+        }).join('');
+        wireKick();
+      }
     }
-  }
 
-  /* ---- stats ---- */
-  var atts = d.quizzes;
-  var published = atts.filter(function (q) { return q.published; });
-  document.getElementById('stats').innerHTML =
-    stat(c.memberCount, 'Members') +
-    stat(published.length, 'Published quizzes') +
-    stat(atts.length, 'Total quizzes', true) +
-    stat(fmtPct(published.length ? Math.round(published.reduce(function (s, q) { return s + (q.avgPercent || 0); }, 0) / published.filter(function (q) { return q.avgPercent != null; }).length * 10) / 10 : null), 'Class average');
-  function stat(v, l, acc) {
-    return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
-  }
+    /* ---- stats ---- */
+    var published = d.quizzes.filter(function (q) { return q.published; });
+    var withAvg = published.filter(function (q) { return q.avgPercent != null; });
+    var clsAvg = withAvg.length ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10 : null;
+    document.getElementById('stats').innerHTML =
+      stat(c.memberCount, 'Members') +
+      stat(published.length, 'Published quizzes') +
+      stat(d.quizzes.length, 'Total quizzes', true) +
+      stat(fmtPct(clsAvg), 'Class average');
+    function stat(v, l, acc) {
+      return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
+    }
 
-  /* ---- class quizzes ---- */
-  var qEl = document.getElementById('quizzes');
-  if (!atts.length) {
-    qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-      (owner ? 'No quizzes assigned to this class yet — set "Visible to: My class only" when creating a quiz.' : 'Your teacher has not added class quizzes yet. Check back soon.') + '</div></div>';
-  } else {
-    qEl.innerHTML = atts.map(card).join('');
-    wire();
+    /* ---- class quizzes (tinted with the class colour) ---- */
+    var qEl = document.getElementById('quizzes');
+    if (!d.quizzes.length) {
+      qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
+        (owner ? 'No quizzes assigned to this class yet — pick this class under "Visible to" when creating a quiz.' : 'Your teacher has not added class quizzes yet. Check back soon.') + '</div></div>';
+    } else {
+      qEl.innerHTML = d.quizzes.map(card).join('');
+      wireStart();
+    }
   }
 
   function card(q) {
@@ -151,9 +181,11 @@
     if (owner) {
       outcome = q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>';
     }
+    var tint = c && c.color ? ' style="--cc:' + esc(c.color) + '"' : '';
     return '' +
-      '<div class="card hover">' +
+      '<div class="card hover classcard"' + tint + '>' +
       '<div class="row" style="margin-bottom:9px"><span class="chip">' + icon('fileText', 13) + ' ' + esc(q.subject) + '</span>' +
+      '<span class="chip classchip">' + (c && c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>' +
       '<span class="spacer"></span>' + outcome + '</div>' +
       '<h3 style="font-size:17.5px">' + esc(q.title) + '</h3>' +
       '<p class="muted small" style="min-height:38px">' + esc(q.description || '') + '</p>' +
@@ -167,7 +199,7 @@
       '</div>';
   }
 
-  function wire() {
+  function wireStart() {
     $$('#quizzes [data-start]').forEach(function (btn) {
       btn.onclick = async function () {
         btn.disabled = true; btn.textContent = 'Starting…';
@@ -178,6 +210,74 @@
       };
     });
   }
+
+  /* ---- kick a student out of the class ---- */
+  function wireKick() {
+    $$('[data-kick]').forEach(function (b) {
+      b.onclick = async function () {
+        var name = b.getAttribute('data-name');
+        var ok = await confirmModal({
+          title: 'Remove ' + name + ' from this class?',
+          body: 'They lose access to this class\'s quizzes immediately. Their past results are kept.',
+          okText: 'Remove from class', danger: true
+        });
+        if (!ok) return;
+        b.disabled = true;
+        try {
+          await POST('/api/classes/' + classId + '/kick', { studentId: b.getAttribute('data-kick') });
+          toast(name + ' removed from the class');
+          loadClassPage();
+        } catch (err) { toast(err.message, 'bad'); b.disabled = false; }
+      };
+    });
+  }
+
+  /* ---- class settings: colour + rename ---- */
+  var ov = document.getElementById('clsOverlay');
+  document.getElementById('clsSettings').onclick = function () {
+    pickedColor = c.color || null;
+    document.getElementById('clsNameInput').value = c.name;
+    document.getElementById('clsErr').hidden = true;
+    renderSwatches();
+    ov.hidden = false;
+  };
+  document.getElementById('clsCancel').onclick = function () { ov.hidden = true; };
+  ov.onclick = function (e) { if (e.target === ov) ov.hidden = true; };
+  function renderSwatches() {
+    var box = document.getElementById('swatches');
+    box.innerHTML = PALETTE.map(function (col) {
+      return '<button type="button" class="swatch' + (pickedColor === col ? ' on' : '') + '" data-col="' + col + '" style="background:' + col + '" title="' + col + '"></button>';
+    }).join('');
+    $$('[data-col]', box).forEach(function (b) {
+      b.onclick = function () { pickedColor = b.getAttribute('data-col'); renderSwatches(); };
+    });
+  }
+  document.getElementById('clsSave').onclick = async function () {
+    var btn = this;
+    var err = document.getElementById('clsErr');
+    err.hidden = true;
+    btn.disabled = true;
+    try {
+      await PUT('/api/classes/' + classId, {
+        name: document.getElementById('clsNameInput').value,
+        color: pickedColor || '#1a73e8'
+      });
+      toast('Class settings saved');
+      ov.hidden = true;
+      loadClassPage();
+    } catch (e2) {
+      err.innerHTML = icon('alertCircle', 16) + '<span>' + esc(e2.message) + '</span>';
+      err.hidden = false;
+    }
+    btn.disabled = false;
+  };
+
+  document.getElementById('copyCode').onclick = function () {
+    try { navigator.clipboard.writeText(c.code); toast('Class code copied — ' + c.code); }
+    catch (e) { toast('Class code: ' + c.code, 'info'); }
+  };
+
+  loadClassPage();
 })().catch(function () {});
 </script>
 </body>

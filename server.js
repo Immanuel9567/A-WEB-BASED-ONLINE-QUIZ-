@@ -45,7 +45,7 @@ function meta(q) { // safe quiz summary (no answers involved)
   };
 }
 function publicQuestion(q) { // what a student may see BEFORE grading
-  return q && { id: q.id, type: q.type, text: q.text, options: q.options, points: q.points };
+  return q && { id: q.id, type: q.type, text: q.text, options: q.options, points: q.points, img: q.img || '' };
 }
 
 /* ------------------------------------------------------------- data & seed  */
@@ -62,167 +62,8 @@ function saveDb() {
 }
 
 function seed() {
-  const t = now();
-  const mkUser = (name, email, pw, role) => {
-    const salt = crypto.randomBytes(8).toString('hex');
-    return { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: t };
-  };
-
-  const teacher = mkUser('Dr. Ada Obi', 'teacher@demo.com', 'teach123', 'teacher');
-  const students = [
-    mkUser('Chidi Okafor', 'student@demo.com', 'study123', 'student'),
-    mkUser('Amara Bello',  'amara@demo.com',   'study123', 'student'),
-    mkUser('Tunde Adeyemi','tunde@demo.com',   'study123', 'student'),
-    mkUser('Fatima Yusuf', 'fatima@demo.com',  'study123', 'student'),
-    mkUser('Emeka Nwosu',  'emeka@demo.com',   'study123', 'student'),
-  ];
-  const [chidi, amara, tunde, fatima, emeka] = students;
-
-  const Q = (id, o) => Object.assign({ id, points: 1, explanation: '' }, o);
-
-  const qz1 = { // CSC 101
-    id: 'qz_csc101', title: 'Introduction to Computer Science', subject: 'Computer Science (CSC 101)',
-    description: 'Test your grasp of core computing concepts — hardware, memory, number systems, software and the web.',
-    durationMin: 15, passMark: 50, attemptsAllowed: 2, shuffle: true, shuffleOptions: true, tabSwitchPolicy: 'warn', published: true,
-    createdAt: t - 72 * 3600e3, createdBy: teacher.id
-  };
-  const qs1 = [
-    Q('qz_csc101_q1', { type:'single', text:'What does CPU stand for?',
-      options:['Central Processing Unit','Computer Personal Unit','Central Program Utility','Control Processing Unit'],
-      answer:0, points:2, explanation:'The CPU is the processor that executes program instructions — the "brain" of the computer.' }),
-    Q('qz_csc101_q2', { type:'single', text:'Which of the following is an input device?',
-      options:['Monitor','Keyboard','Printer','Speaker'], answer:1, points:2,
-      explanation:'A keyboard sends data INTO the computer; the others are output devices.' }),
-    Q('qz_csc101_q3', { type:'single', text:'RAM is best described as ___ memory.',
-      options:['Non-volatile','Volatile','Permanent','Secondary'], answer:1, points:2,
-      explanation:'RAM loses its contents when power is removed — it is volatile.' }),
-    Q('qz_csc101_q4', { type:'single', text:'The binary number system uses only which digits?',
-      options:['0 to 9','0 and 1','1 and 2','0, 1 and 2'], answer:1, points:2, explanation:'Binary is base 2: only 0 and 1.' }),
-    Q('qz_csc101_q5', { type:'multiple', text:'Select ALL the output devices.',
-      options:['Monitor','Scanner','Printer','Mouse'], answer:[0,2], points:3,
-      explanation:'Monitors and printers produce output; scanners and mice are input devices.' }),
-    Q('qz_csc101_q6', { type:'truefalse', text:'One kilobyte (KB) equals 1024 bytes.',
-      options:['True','False'], answer:0, points:1, explanation:'In computing, 1 KB = 2¹⁰ = 1024 bytes.' }),
-    Q('qz_csc101_q7', { type:'single', text:'Which of these is an operating system?',
-      options:['Firefox','Linux','Photoshop','Excel'], answer:1, points:2,
-      explanation:'Linux is system software; the rest are application programs.' }),
-    Q('qz_csc101_q8', { type:'single', text:'HTML is primarily used to ___',
-      options:['style web pages','structure web content','query databases','transfer files'], answer:1, points:2,
-      explanation:'HTML provides structure; CSS handles styling and SQL queries databases.' }),
-    Q('qz_csc101_q9', { type:'multiple', text:'Select ALL that are programming languages.',
-      options:['Python','HTTP','C++','Windows'], answer:[0,2], points:3,
-      explanation:'Python and C++ are languages; HTTP is a protocol and Windows is an OS.' }),
-    Q('qz_csc101_q10',{ type:'truefalse', text:'The CPU is also known as the brain of the computer.',
-      options:['True','False'], answer:0, points:1 }),
-  ];
-
-  const qz2 = { // Web Technology
-    id: 'qz_web', title: 'Web Technology Fundamentals', subject: 'Web Technology',
-    description: 'HTML, CSS, HTTP and the building blocks of the modern web.',
-    durationMin: 10, passMark: 50, attemptsAllowed: 3, shuffle: true, shuffleOptions: false, tabSwitchPolicy: 'warn', published: true,
-    createdAt: t - 48 * 3600e3, createdBy: teacher.id
-  };
-  const qs2 = [
-    Q('qz_web_q1', { type:'single', text:'What does HTML stand for?',
-      options:['HyperText Markup Language','HighText Machine Language','HyperTool Multi Language','Home Tool Markup Language'],
-      answer:0, points:2, explanation:'HTML = HyperText Markup Language.' }),
-    Q('qz_web_q2', { type:'single', text:'Which HTML tag is used to create a hyperlink?',
-      options:['<link>','<a>','<href>','<url>'], answer:1, points:2, explanation:'The anchor tag <a> creates hyperlinks.' }),
-    Q('qz_web_q3', { type:'single', text:'CSS is mainly used for ___',
-      options:['data storage','presentation and styling','server-side scripting','routing requests'], answer:1, points:2 }),
-    Q('qz_web_q4', { type:'single', text:'An HTTP 404 status code means ___',
-      options:['OK','Unauthorized','Not Found','Server Error'], answer:2, points:2, explanation:'404 = the requested resource was not found.' }),
-    Q('qz_web_q5', { type:'multiple', text:'Select ALL front-end technologies.',
-      options:['HTML','CSS','JavaScript','MySQL'], answer:[0,1,2], points:3,
-      explanation:'MySQL is a database — a back-end technology.' }),
-    Q('qz_web_q6', { type:'truefalse', text:'JSON stands for JavaScript Object Notation.',
-      options:['True','False'], answer:0, points:1 }),
-    Q('qz_web_q7', { type:'single', text:'Which protocol is used to secure web traffic?',
-      options:['FTP','HTTP','HTTPS','SMTP'], answer:2, points:2 }),
-    Q('qz_web_q8', { type:'multiple', text:'Select ALL valid HTTP methods.',
-      options:['GET','POST','RETRIEVE','FETCH'], answer:[0,1], points:3,
-      explanation:'RETRIEVE and FETCH are not HTTP methods — try GET, POST, PUT, PATCH, DELETE…' }),
-  ];
-
-  const qz3 = { // draft quiz — demonstrates the publish workflow
-    id: 'qz_apt', title: 'General Aptitude Test (Draft)', subject: 'General Aptitude',
-    description: 'Logical reasoning and quantitative aptitude practice set.',
-    durationMin: 10, passMark: 60, attemptsAllowed: 1, shuffle: false, shuffleOptions: false, tabSwitchPolicy: 'warn', published: false,
-    createdAt: t - 6 * 3600e3, createdBy: teacher.id
-  };
-  const qs3 = [
-    Q('qz_apt_q1', { type:'single', text:'A shirt costs ₦2,500 and is sold at a 20% discount. What is the selling price?',
-      options:['₦2,000','₦2,100','₦2,300','₦2,400'], answer:0, points:2, explanation:'20% of 2500 = 500, so 2500 − 500 = ₦2,000.' }),
-    Q('qz_apt_q2', { type:'single', text:'Complete the sequence: 2, 6, 12, 20, 30, ___',
-      options:['36','40','42','44'], answer:2, points:2, explanation:'Differences grow by 2: +4, +6, +8, +10, +12 -> 42.' }),
-    Q('qz_apt_q3', { type:'truefalse', text:'A square is a rectangle.',
-      options:['True','False'], answer:0, points:1, explanation:'A square satisfies the definition of a rectangle (four right angles).' }),
-    Q('qz_apt_q4', { type:'single', text:'Which is the odd one out?',
-      options:['Triangle','Square','Circle','Pentagon'], answer:2, points:2,
-      explanation:'A circle has no straight sides or vertices.' }),
-    Q('qz_apt_q5', { type:'single', text:'If today is Wednesday, what day will it be in 10 days?',
-      options:['Friday','Saturday','Sunday','Monday'], answer:1, points:2, explanation:'10 mod 7 = 3 -> Wednesday + 3 = Saturday.' }),
-  ];
-
-  db = {
-    users: [teacher, ...students],
-    quizzes: [qz1, qz2, qz3],
-    questions: { [qz1.id]: qs1, [qz2.id]: qs2, [qz3.id]: qs3 },
-    attempts: [],
-    notifications: [],
-    sessions: {}
-  };
-
-  // ---- seed historical attempts so analytics & leaderboards look alive ----
-  const H = 3600e3;
-  const mkA = (user, quiz, qs, correctCount, startedAt) => {
-    const a = {
-      id: uid('a'), quizId: quiz.id, userId: user.id, startedAt,
-      endsAt: startedAt + quiz.durationMin * 60000, status: 'in_progress',
-      answers: {}, tabSwitches: 0, questionOrder: null
-    };
-    qs.forEach((q, i) => {
-      if (i < correctCount) a.answers[q.id] = (q.type === 'multiple') ? q.answer.slice() : q.answer;
-      else if (i % 3 === 2) { /* left blank — skipped */ }
-      else a.answers[q.id] = (q.type === 'multiple') ? [0] : (q.answer + 1) % q.options.length;
-    });
-    a.submittedAt = startedAt + (300 + ((correctCount * 47) % 480)) * 1000;
-    return a;
-  };
-
-  db.attempts.push(
-    mkA(chidi,  qz1, qs1, 9, t - 26 * H),   // ≈ 95%
-    mkA(amara,  qz1, qs1, 7, t - 25 * H),   // ≈ 70%
-    mkA(tunde,  qz1, qs1, 6, t - 23 * H),   // ≈ 60%
-    mkA(fatima, qz1, qs1, 4, t - 20 * H),   // ≈ 40% (fail)
-    mkA(emeka,  qz1, qs1, 8, t - 18 * H),   // ≈ 85%
-    mkA(chidi,  qz2, qs2, 7, t -  9 * H),   // ≈ 82%
-    mkA(tunde,  qz2, qs2, 5, t -  7 * H),   // ≈ 65%
-    mkA(emeka,  qz2, qs2, 6, t -  5 * H),   // ≈ 76%
-  );
-  db.attempts.forEach((a) => { a.status = 'submitted'; finishAttempt(a); });
-
-  // seed a couple of teacher notifications so the bell has history
-  const recent = db.attempts.slice().sort((x, y) => y.submittedAt - x.submittedAt).slice(0, 2);
-  recent.forEach((a, i) => {
-    const quiz = byId(db.quizzes, a.quizId);
-    db.notifications.push({
-      id: uid('n'), userId: quiz.createdBy, quizId: quiz.id, quizTitle: quiz.title,
-      attemptId: a.id, studentName: (byId(db.users, a.userId) || { name: 'Student' }).name,
-      type: 'submitted', percent: a.percent, score: a.score, maxScore: a.maxScore,
-      passed: a.passed, createdAt: a.submittedAt, read: i !== 0 // newest stays unread
-    });
-  });
-
-  // one live, in-progress attempt (Amara, started ~90s ago) for the live monitor
-  db.attempts.push({
-    id: uid('a'), quizId: qz2.id, userId: amara.id, startedAt: t - 90e3,
-    endsAt: t - 90e3 + qz2.durationMin * 60000, status: 'in_progress',
-    answers: { [qs2[0].id]: qs2[0].answer, [qs2[2].id]: qs2[2].answer },
-    tabSwitches: 0, questionOrder: null
-  });
-
-  saveDb();
+  // fresh install: completely empty — the first teacher registers from the login page
+  db = { users: [], quizzes: [], questions: {}, attempts: [], notifications: [], classes: [], sessions: {} };
 }
 
 function loadDb() {
@@ -270,7 +111,7 @@ function finishAttempt(a) {
     review.push({
       questionId: q.id, text: q.text, type: q.type, options: q.options,
       answer: q.answer, given: has ? given : null, correct, points: q.points,
-      explanation: q.explanation || ''
+      explanation: q.explanation || '', img: q.img || ''
     });
   }
   a.score = score;
@@ -376,7 +217,7 @@ function serveStatic(p, res) {
 function classPublic(c) {
   const t = byId(db.users, c.teacherId);
   return c && {
-    id: c.id, name: c.name, code: c.code,
+    id: c.id, name: c.name, code: c.code, color: c.color || null,
     teacherId: c.teacherId, teacherName: t ? t.name : 'Teacher',
     memberCount: (c.studentIds || []).length, createdAt: c.createdAt
   };
@@ -502,6 +343,10 @@ route('GET', '/api/users', async ({ user, res }) => {
 
 /* ======== QUIZZES ======== */
 function quizFor(q, user) { // meta + counters, personalised for the viewer
+  const classInfo = (q.classes || [])
+    .map((id) => byId(db.classes, id))
+    .filter(Boolean)
+    .map((c) => ({ id: c.id, name: c.name, color: c.color || null }));
   const qs = db.questions[q.id] || [];
   const live = qs.filter((x) => !x.draft);
   const atts = db.attempts.filter((a) => a.quizId === q.id);
@@ -510,6 +355,7 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
   const myDone = mine.filter((a) => a.status !== 'in_progress');
   const inprog = mine.find((a) => a.status === 'in_progress');
   return Object.assign(meta(q), {
+    classInfo,
     questionCount: live.length,
     draftCount: qs.length - live.length,
     totalPoints: live.reduce((s, x) => s + x.points, 0),
@@ -616,11 +462,15 @@ function validQuestion(body) {
     if (type === 'multiple' && (!Array.isArray(answer) || !answer.length)) return { error: 'Mark at least one correct option.' };
     if (type === 'truefalse' && !(answer === 0 || answer === 1)) return { error: 'Mark the correct answer.' };
   }
+  const img = typeof body.img === 'string' && body.img.startsWith('data:image/')
+    ? (body.img.length > 900000 ? null : body.img)
+    : '';
+  if (body.img && img === null) return { error: 'Image is too large — attach a smaller picture (under ~700 KB).' };
   return { q: {
     id: body.id || uid('qn'), type, text, options, answer,
     points: clamp(Math.round(Number(body.points) || 1), 1, 10),
     explanation: String(body.explanation || '').trim(),
-    draft
+    img, draft
   } };
 }
 
@@ -1066,7 +916,9 @@ route('GET', '/api/notifications', async ({ user, res }) => {
   for (const n of mine) {
     let g = seen.get(n.quizId);
     if (!g) {
-      g = { quizId: n.quizId, quizTitle: n.quizTitle || '(deleted quiz)', unread: 0, latestAt: n.createdAt, items: [] };
+      const qz = byId(db.quizzes, n.quizId);
+      const cls = qz && (qz.classes || []).length ? byId(db.classes, qz.classes[0]) : null;
+      g = { quizId: n.quizId, quizTitle: n.quizTitle || '(deleted quiz)', unread: 0, latestAt: n.createdAt, color: cls ? (cls.color || null) : null, items: [] };
       seen.set(n.quizId, g);
       groups.push(g);
     }
@@ -1145,15 +997,15 @@ route('PUT', '/api/auth/profile', async ({ user, body, res }) => {
 route('GET', '/api/classes/mine', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
-  const c = db.classes.find((x) => x.teacherId === user.id);
-  send(res, 200, { class: c ? classPublic(c) : null });
+  const mine = db.classes.filter((x) => x.teacherId === user.id).map(classPublic);
+  send(res, 200, { classes: mine });
 });
 
 route('POST', '/api/classes', async ({ user, body, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
-  if (db.classes.some((x) => x.teacherId === user.id)) {
-    return send(res, 400, { error: 'You already have a class — its code is on your dashboard.' });
+  if (db.classes.filter((x) => x.teacherId === user.id).length >= 12) {
+    return send(res, 400, { error: 'Class limit reached (12).' });
   }
   const name = String(body.name || '').trim();
   if (name.length < 2) return send(res, 400, { error: 'Please enter a class name (at least 2 characters).' });
@@ -1210,6 +1062,40 @@ route('GET', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
       .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
   }
   send(res, 200, out);
+});
+
+route('PUT', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, body, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const c = byId(db.classes, params[0]);
+  if (!c) return send(res, 404, { error: 'Class not found.' });
+  if (c.teacherId !== user.id) return send(res, 403, { error: 'This class belongs to another teacher.' });
+  if (body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (name.length < 2) return send(res, 400, { error: 'Class name must be at least 2 characters.' });
+    c.name = name;
+  }
+  if (body.color !== undefined) {
+    const color = String(body.color || '').trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) return send(res, 400, { error: 'Invalid color.' });
+    c.color = color;
+  }
+  saveDb();
+  send(res, 200, { class: classPublic(c) });
+});
+
+route('POST', '/api/classes/([A-Za-z0-9_]+)/kick', async ({ user, params, body, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const c = byId(db.classes, params[0]);
+  if (!c) return send(res, 404, { error: 'Class not found.' });
+  if (c.teacherId !== user.id) return send(res, 403, { error: 'This class belongs to another teacher.' });
+  const sid = String(body.studentId || '');
+  const student = byId(db.users, sid);
+  if (!student || !(c.studentIds || []).includes(sid)) {
+    return send(res, 404, { error: 'That student is not a member of this class.' });
+  }
+  c.studentIds = c.studentIds.filter((x) => x !== sid);
+  saveDb();
+  send(res, 200, { ok: true, memberCount: c.studentIds.length });
 });
 
 /* ======== CLOUD SAVE (encrypted GitHub branch) ======== */
@@ -1489,8 +1375,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('  OQAS - Online Quiz & Automated Assessment System');
   console.log('==================================================');
   console.log('  API + UI  ->  http://localhost:' + PORT);
-  console.log('  Accounts  ->  teacher@demo.com / teach123');
-  console.log('               student@demo.com / study123');
+  console.log('  Accounts  ->  none yet - register the first teacher at /login.html');
   console.log('  Cloud     ->  ' + (cloudCfg ? 'connected (' + CLOUD_BRANCH + ' branch)' : 'not connected'));
   console.log('==================================================');
 });

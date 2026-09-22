@@ -486,3 +486,105 @@ button.uchip {
   border-radius: 10px;
 }
 button.uchip:hover { background: #f1f3f4; }
+
+/* ============================ v5: collapse, colors, images, mobile ========= */
+/* collapsible sidebar (desktop) */
+body.app.sb-min { --sbw: 66px; }
+body.app, .sidebar, .notifpanel { transition: none; }
+.sidebar { transition: width .18s ease; }
+body.app { transition: padding-left .18s ease; }
+body.app.sb-min .sidebar { padding: 14px 8px; }
+body.app.sb-min .sb-head { flex-direction: column; gap: 10px; padding: 6px 0 14px; }
+body.app.sb-min .brand span,
+body.app.sb-min .sb-label,
+body.app.sb-min .sb-item span,
+body.app.sb-min .uchip .utxt { display: none; }
+body.app.sb-min .sb-item { justify-content: center; padding: 10px 6px; }
+body.app.sb-min .uchip { justify-content: center; padding: 6px 4px 8px; }
+.sb-toggle { color: #5f6368; }
+.sb-toggle:hover { background: #f1f3f4; }
+
+/* password visibility eye button */
+.pwwrap { position: relative; }
+.pwwrap input { padding-right: 42px; width: 100%; }
+.pwbtn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: 0; border-radius: 7px;
+  background: none; color: #5f6368; cursor: pointer;
+}
+.pwbtn:hover { background: #f1f3f4; color: #202124; }
+
+/* pop-up notification cards (teacher + student alerts) */
+.notifpop {
+  position: fixed; top: 18px; right: 18px; z-index: 300;
+  display: flex; align-items: center; gap: 12px;
+  width: 340px; max-width: calc(100vw - 24px);
+  background: #fff; border: 1px solid #e8eaed; border-left: 4px solid #1a73e8;
+  border-radius: 12px; padding: 13px 14px;
+  box-shadow: 0 8px 28px rgba(60, 64, 67, .18);
+  transform: translateX(24px); opacity: 0; transition: .25s ease;
+}
+.notifpop.in { transform: none; opacity: 1; }
+.notifpop .npico { color: #1a73e8; display: inline-flex; }
+.notifpop .npbody { flex: 1; min-width: 0; }
+.notifpop .nptitle { font-size: 13.5px; font-weight: 700; color: #202124; }
+.notifpop .npsub { font-size: 12.5px; color: #5f6368; margin-top: 2px; }
+
+/* class colours: dots, chips, tinted cards */
+.classdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; }
+.classdot.big { width: 14px; height: 14px; flex-basis: 14px; }
+.chip.classchip { gap: 7px; }
+.card.classcard { border-top: 3px solid var(--cc, #1a73e8); }
+.notif-group-title { display: flex; align-items: center; gap: 7px; }
+
+/* visibility selector (multi-class) */
+.viswrap { display: flex; flex-direction: column; gap: 4px; }
+.visopt {
+  display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+  border: 1px solid #e8eaed; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 13.5px;
+}
+.visopt:hover { background: #f8f9fa; }
+.visopt input { accent-color: #1a73e8; width: 16px; height: 16px; }
+.visopt.disabled { opacity: .45; pointer-events: none; }
+
+/* question pictures */
+.qimg { display: block; max-width: 100%; max-height: 380px; margin: 10px 0; border-radius: 10px; border: 1px solid #e8eaed; }
+.qthumb { display: block; max-width: 130px; max-height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid #e8eaed; margin-bottom: 8px; }
+
+/* colour swatches (class settings) */
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch {
+  width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; cursor: pointer;
+  box-shadow: 0 0 0 1px #dadce0; transition: .12s;
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch.on { box-shadow: 0 0 0 3px #202124; transform: scale(1.08); }
+
+/* class rows on the teacher dashboard */
+.clsrow { border: 1px solid #e8eaed; border-radius: 11px; padding: 10px 12px; background: #fff; }
+
+/* mobile refinements */
+@media (max-width: 640px) {
+  .pagehead { margin-top: 18px; }
+  .pagehead h1 { font-size: 21px; }
+  .sec { font-size: 17px; margin: 22px 0 10px; }
+  .statgrid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .quizgrid { grid-template-columns: 1fr; gap: 12px; }
+  .card { padding: 16px; }
+  .container { padding: 0 12px; }
+  .modal { margin: 10px; width: 100%; max-height: 92vh; overflow-y: auto; }
+  .overlay { padding: 0; align-items: flex-end; }
+  .notifpop { left: 10px; right: 10px; width: auto; top: 10px; }
+  .codebox { width: 100%; justify-content: space-between; }
+  .codebox .code { font-size: 24px; letter-spacing: 5px; }
+  .btn { padding: 10px 14px; }
+  .formrow { flex-direction: column; }
+  table { min-width: 540px; }
+}
+
+/* sidebar collapse is a desktop feature — never affects the mobile top bar */
+@media (max-width: 900px) {
+  body.app.sb-min { --sbw: 0px; }
+  .sb-toggle { display: none; }
+}

@@ -10,8 +10,6 @@
   .authwrap { min-height: calc(100vh - 62px); display: flex; align-items: center; justify-content: center; padding: 30px 16px; }
   .authcard { width: 100%; max-width: 430px; }
   .authcard .brand { justify-content: center; margin-bottom: 18px; font-size: 22px; }
-  .demoquick { display: flex; gap: 8px; margin-top: 16px; }
-  .demoquick .btn { flex: 1; }
 </style>
 </head>
 <body>
@@ -51,10 +49,6 @@
           <input id="liPw" type="password" autocomplete="current-password" placeholder="Your password" required>
         </div>
         <button class="btn primary block" id="liBtn" type="submit">Sign in</button>
-        <div class="demoquick">
-          <button class="btn sm" type="button" id="fillStudent"></button>
-          <button class="btn sm" type="button" id="fillTeacher"></button>
-        </div>
       </form>
 
       <!-- ============ REGISTER ============ -->
@@ -99,8 +93,9 @@
 (function () {
   'use strict';
   // icon-labelled buttons (uniform pack from app.js)
-  document.getElementById('fillStudent').innerHTML = icon('bookOpen', 15) + ' Demo student';
-  document.getElementById('fillTeacher').innerHTML = icon('presentation', 15) + ' Demo teacher';
+  // no seeded demo accounts — everyone registers or signs in with real credentials
+  pwField('liPw');
+  pwField('rgPw');
   document.getElementById('roleStudent').innerHTML = icon('bookOpen', 15) + ' Student';
   document.getElementById('roleTeacher').innerHTML = icon('presentation', 15) + ' Teacher';
   document.getElementById('backHome').innerHTML = icon('arrowLeft', 15) + ' Back home';
@@ -135,15 +130,6 @@
     this.classList.add('on');
     document.getElementById('roleStudent').classList.remove('on');
     document.getElementById('classField').hidden = false;
-  };
-
-  document.getElementById('fillStudent').onclick = function () {
-    document.getElementById('liEmail').value = 'student@demo.com';
-    document.getElementById('liPw').value = 'study123';
-  };
-  document.getElementById('fillTeacher').onclick = function () {
-    document.getElementById('liEmail').value = 'teacher@demo.com';
-    document.getElementById('liPw').value = 'teach123';
   };
 
   function afterAuth(user) {
