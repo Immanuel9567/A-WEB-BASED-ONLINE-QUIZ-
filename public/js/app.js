@@ -155,9 +155,12 @@
   /* ---------------- sidebar (+ teacher notification bell) ----------------- */
   var LOGO = '<svg width="28" height="28" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  var navUser = null, navActive = null;
   window.navbar = function (user, active) {
     var el = document.getElementById('nav');
     if (!el) return;
+    navUser = user;
+    navActive = active;
     var isTeacher = user.role === 'teacher';
     var home = isTeacher ? 'teacher.html' : 'dashboard.html';
     var initials = user.name.trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
@@ -188,9 +191,10 @@
       '<div class="sb-label" id="sbClassLbl" hidden></div>' +
       '<nav class="sb-nav" id="sbClassNav"></nav>' +
       '<div class="sb-foot">' +
-      '<div class="uchip"><span class="avatar">' + esc(initials) + '</span>' +
+      '<button class="uchip" id="profileBtn" title="Edit profile">' +
+      '<span class="avatar">' + esc(initials) + '</span>' +
       '<span class="utxt"><b>' + esc(user.name) + '</b>' +
-      '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span></div>' +
+      '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span></button>' +
       '<button class="btn ghost sm" id="navLogout">' + icon('logout', 15) + '<span class="lbl">Log out</span></button>' +
       '</div>' +
       '<div class="notifpanel" id="notifPanel" hidden></div>' +
@@ -200,6 +204,13 @@
       try { await POST('/api/auth/logout'); } catch (e) {}
       setToken(null);
       location.href = 'login.html';
+    };
+
+    var profileBtn = document.getElementById('profileBtn');
+    if (profileBtn) profileBtn.onclick = function () {
+      editProfile(navUser).then(function (u) {
+        if (u) navbar(u, navActive); // re-render sidebar with the new name — no page refresh
+      });
     };
 
     fillSidebarClasses(user);
@@ -328,8 +339,59 @@
     }
 
     refresh();
-    setInterval(function () { if (!document.hidden) refresh(); }, 10000);
+    if (window.__oqasBellTimer) clearInterval(window.__oqasBellTimer);
+    window.__oqasBellTimer = setInterval(function () { if (!document.hidden) refresh(); }, 10000);
   }
+
+  /* ---------------- profile editing modal --------------------------------- */
+  window.editProfile = function (user) {
+    return new Promise(function (resolve) {
+      var ov = document.createElement('div');
+      ov.className = 'overlay';
+      ov.innerHTML =
+        '<div class="modal"><h3>Edit profile</h3>' +
+        '<p class="muted small">Update your name, sign-in email or password.</p>' +
+        '<div class="form-err" id="profErr" hidden></div>' +
+        '<form id="profForm" novalidate>' +
+        '<div class="field"><label for="pfName">Full name</label>' +
+        '<input id="pfName" type="text" value="' + esc(user.name) + '"></div>' +
+        '<div class="field"><label for="pfEmail">Email address</label>' +
+        '<input id="pfEmail" type="email" value="' + esc(user.email) + '"></div>' +
+        '<div class="field"><label for="pfCur">Current password</label>' +
+        '<input id="pfCur" type="password" autocomplete="current-password" placeholder="Required to save any change"></div>' +
+        '<div class="field"><label for="pfNew">New password <span class="muted">(optional)</span></label>' +
+        '<input id="pfNew" type="password" autocomplete="new-password" placeholder="Leave blank to keep your current password">' +
+        '<div class="modal-actions">' +
+        '<button type="button" class="btn" data-x>Cancel</button>' +
+        '<button type="submit" class="btn primary" id="pfSave">Save changes</button>' +
+        '</div></form></div>';
+      document.body.appendChild(ov);
+      var close = function (v) { ov.remove(); resolve(v); };
+      ov.querySelector('[data-x]').onclick = function () { close(null); };
+      ov.onclick = function (e) { if (e.target === ov) close(null); };
+      ov.querySelector('#profForm').onsubmit = async function (e) {
+        e.preventDefault();
+        var btn = ov.querySelector('#pfSave');
+        var err = ov.querySelector('#profErr');
+        err.hidden = true;
+        btn.disabled = true; btn.textContent = 'Saving…';
+        try {
+          var r = await PUT('/api/auth/profile', {
+            name: ov.querySelector('#pfName').value,
+            email: ov.querySelector('#pfEmail').value,
+            currentPassword: ov.querySelector('#pfCur').value,
+            newPassword: ov.querySelector('#pfNew').value
+          });
+          toast(r.passwordChanged ? 'Profile updated — use your new password next time you sign in' : 'Profile updated');
+          close(r.user);
+        } catch (e2) {
+          err.innerHTML = icon('alertCircle', 16) + '<span>' + esc(e2.message) + '</span>';
+          err.hidden = false;
+          btn.disabled = false; btn.textContent = 'Save changes';
+        }
+      };
+    });
+  };
 
   /* ---------------- toast -------------------------------------------------- */
   window.toast = function (msg, type) {

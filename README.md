@@ -81,6 +81,11 @@ New accounts (either role) can be created from the sign-in page.
 - Quizzes can be visible to **all students** or **one class only**; class quizzes appear just
   for members, on their dashboard and on the class page.
 
+**Profile editing** — every user (teacher or student) can update their name, sign-in email
+and password from the sidebar (click your name at the bottom-left); changes apply instantly
+across the app without a page refresh. Dashboard actions — publish, unpublish, delete,
+restore, joining a class — also update the screen in place.
+
 **Cloud save (encrypted GitHub storage)**
 - Connect a GitHub personal access token once and the **whole database auto-saves to the
   cloud** a few seconds after every change — AES-256-GCM encrypted, stored on a
@@ -194,6 +199,7 @@ New accounts (either role) can be created from the sign-in page.
 | `POST /api/admin/cloud/connect` | teacher | Connect cloud storage (token + passphrase) |
 | `POST /api/admin/cloud/save` | teacher | Push the database to the cloud now |
 | `POST /api/admin/cloud/restore` | teacher | Pull the cloud copy back into the server |
+| `PUT /api/auth/profile` | any user | Update own name / email / password (needs current password) |
 | `GET /api/students` | teacher | Enrolled students with aggregate stats |
 | `GET /api/students/:id/history` | teacher | One student's full attempt history |
 | `GET /api/admin/export` | teacher | Download full database (backup) |
@@ -269,6 +275,11 @@ Everything (users, quizzes, questions, attempts, notifications, classes) lives i
 3. Done. The database is **AES-256-GCM encrypted** and pushed to the `cloud-data` branch
    of your repo (file `cloud/db.json`) a few seconds after every change, and restored
    automatically whenever the server starts.
+
+Persistence hardening: new registrations are pushed to the cloud **immediately**, auto-save
+runs 1.5 s after every other change, a pending save is **flushed on server shutdown**, and on
+startup the server reconciles local vs cloud (the newer side wins, and any account that exists
+only locally is rescued) — so a restart can no longer lose a just-created account.
 
 Recovering on a fresh server: install, start the server, connect the same token + passphrase,
 then press **Restore from cloud** (or restart — startup pulls it automatically).

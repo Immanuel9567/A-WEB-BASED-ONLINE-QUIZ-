@@ -50,9 +50,11 @@ function publicQuestion(q) { // what a student may see BEFORE grading
 
 /* ------------------------------------------------------------- data & seed  */
 let db;
+let dbSeeded = false; // true when this boot started from the seed (no db.json)
 
 function saveDb() {
   fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+  db.updatedAt = now();
   const tmp = DB_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 1));
   fs.renameSync(tmp, DB_FILE); // atomic replace
@@ -229,6 +231,7 @@ function loadDb() {
     if (!db || !Array.isArray(db.users)) throw new Error('corrupt');
   } catch (e) {
     seed();
+    dbSeeded = true;
   }
   if (!db.notifications) db.notifications = []; // migration for older stores
   if (!db.classes) db.classes = []; // migration for older stores
@@ -461,6 +464,8 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   const token = crypto.randomBytes(24).toString('hex');
   db.sessions[token] = { userId: user.id, createdAt: now() };
   saveDb();
+  // a brand-new account must reach the cloud at once — no debounce window
+  cloudSaveNow().catch((e) => console.error('cloud: register save failed -', e.message));
   send(res, 201, { token, user: publicUser(user) });
 });
 
@@ -1110,6 +1115,32 @@ route('GET', '/api/leaderboard', async ({ user, res }) => {
   send(res, 200, { rows });
 });
 
+/* ======== PROFILE (self-service editing) ======== */
+route('PUT', '/api/auth/profile', async ({ user, body, res }) => {
+  if (!user) return send(res, 401, { error: 'Sign in required.' });
+  const name = String(body.name || '').trim();
+  const email = String(body.email || '').trim().toLowerCase();
+  const curPw = String(body.currentPassword || '');
+  const newPw = String(body.newPassword || '');
+  if (name.length < 2) return send(res, 400, { error: 'Please enter your full name (at least 2 characters).' });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
+  if (user.pass !== hashPw(curPw, user.salt)) return send(res, 403, { error: 'Current password is incorrect.' });
+  if (db.users.some((u) => u.email === email && u.id !== user.id)) {
+    return send(res, 409, { error: 'Another account already uses that email address.' });
+  }
+  if (newPw && newPw.length < 6) return send(res, 400, { error: 'New password must be at least 6 characters.' });
+  const emailChanged = email !== user.email;
+  user.name = name;
+  user.email = email;
+  if (newPw) {
+    const salt = crypto.randomBytes(8).toString('hex');
+    user.salt = salt;
+    user.pass = hashPw(newPw, salt);
+  }
+  saveDb();
+  send(res, 200, { user: publicUser(user), emailChanged, passwordChanged: !!newPw });
+});
+
 /* ======== CLASSES ======== */
 route('GET', '/api/classes/mine', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
@@ -1287,7 +1318,7 @@ function scheduleCloudSave() { // debounced auto-save after local writes
   cloudTimer = setTimeout(() => {
     cloudTimer = null;
     cloudSaveNow().catch((e) => console.error('cloud: auto-save failed -', e.message));
-  }, 5000);
+  }, 1500);
 }
 if (cloudTimer && cloudTimer.unref) cloudTimer.unref();
 
@@ -1363,21 +1394,36 @@ route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
   send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
 });
 
-async function cloudStartupRestore() { // pull the cloud copy before the server starts serving
+async function cloudStartupRestore() { // reconcile local vs cloud before serving
   if (!cloudCfg) return;
+  let data = null;
+  try { data = await cloudFetchData(); }
+  catch (e) { console.error('cloud: read failed -', e.message); return; }
+  if (!data || !Array.isArray(data.users)) {
+    console.log('cloud: connected, no saved data yet - starting fresh');
+    return;
+  }
+  const cloudAt = data.updatedAt || 0;
+  const localAt = db.updatedAt || 0;
+  if (!dbSeeded && localAt > cloudAt + 1000) {
+    // local file is newer than the cloud copy (a save never landed) — keep local
+    console.log('cloud: local data is newer - keeping it (' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes)');
+    return;
+  }
   try {
-    const data = await cloudFetchData();
-    if (!data || !Array.isArray(data.users)) {
-      console.log('cloud: connected, no saved data yet - starting fresh');
-      return;
-    }
+    // cloud wins — but rescue any local accounts the cloud copy does not have,
+    // so a registration can never be lost by a restore
+    const ids = new Set(data.users.map((u) => u.id));
+    const rescue = db.users.filter((u) => !ids.has(u.id));
+    if (rescue.length) data.users = data.users.concat(rescue);
     cloudSuppress++;
     try {
       applyDbData(data);
       db.sessions = {}; // fresh boot - everyone signs in again
       saveDb();
     } finally { cloudSuppress--; }
-    console.log('cloud: restored ' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes, ' + db.attempts.length + ' attempts');
+    console.log('cloud: restored ' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes, ' + db.attempts.length + ' attempts' +
+      (rescue.length ? ' (' + rescue.length + ' local account(s) rescued)' : ''));
   } catch (e) {
     console.error('cloud: restore skipped -', e.message);
   }
@@ -1418,6 +1464,24 @@ const server = http.createServer(async (req, res) => {
     try { send(res, 500, { error: 'Server error', detail: String((err && err.message) || err) }); } catch (e) {}
   }
 });
+
+function flushCloudAndExit() {
+  if (cloudTimer) {
+    console.log('cloud: flushing pending save before shutdown...');
+    clearTimeout(cloudTimer);
+    cloudTimer = null;
+    const p = cloudSaveNow();
+    if (p && p.finally) p.catch(() => {}).finally(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  } else if (cloudState.saving) {
+    // a save is already in flight — give it a moment to land
+    setTimeout(() => process.exit(0), 3000).unref();
+  } else {
+    process.exit(0);
+  }
+}
+process.on('SIGTERM', flushCloudAndExit);
+process.on('SIGINT', flushCloudAndExit);
 
 function startListen() {
 server.listen(PORT, '0.0.0.0', () => {

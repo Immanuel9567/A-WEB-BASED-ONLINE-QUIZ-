@@ -60,22 +60,28 @@
   document.getElementById('welcome').textContent =
     'Welcome, ' + user.name + ' — build quizzes, monitor sessions live and review analytics.';
 
-  var results = await Promise.all([GET('/api/quizzes'), GET('/api/users')]);
-  var quizzes = results[0].quizzes;
-  var users = results[1].users;
-  var students = users.filter(function (u) { return u.role === 'student'; });
+  var quizzes = [], students = [];
 
-  /* ---- stats ---- */
-  var totalAttempts = quizzes.reduce(function (s, q) { return s + q.attemptCount; }, 0);
-  var withAvg = quizzes.filter(function (q) { return q.avgPercent != null; });
-  var overallAvg = withAvg.length
-    ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10
-    : null;
-  document.getElementById('stats').innerHTML =
-    st(quizzes.length, 'Quizzes created') +
-    stLink(students.length, 'Enrolled students', 'students.html', 'View list') +
-    st(totalAttempts, 'Attempts (incl. live)') +
-    st(fmtPct(overallAvg), 'Average score', true);
+  /* ---- stats + table re-render in place after every change — no page refresh ---- */
+  async function refresh() {
+    var results = await Promise.all([GET('/api/quizzes'), GET('/api/users')]);
+    quizzes = results[0].quizzes;
+    students = results[1].users.filter(function (u) { return u.role === 'student'; });
+    renderStats();
+    renderTable();
+  }
+  function renderStats() {
+    var totalAttempts = quizzes.reduce(function (s, q) { return s + q.attemptCount; }, 0);
+    var withAvg = quizzes.filter(function (q) { return q.avgPercent != null; });
+    var overallAvg = withAvg.length
+      ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10
+      : null;
+    document.getElementById('stats').innerHTML =
+      st(quizzes.length, 'Quizzes created') +
+      stLink(students.length, 'Enrolled students', 'students.html', 'View list') +
+      st(totalAttempts, 'Attempts (incl. live)') +
+      st(fmtPct(overallAvg), 'Average score', true);
+  }
   function st(v, l, acc) {
     return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
   }
@@ -85,13 +91,16 @@
 
   /* ---- table ---- */
   var tb = document.getElementById('rows');
-  if (!quizzes.length) {
-    tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-      'No quizzes yet — use Create quiz in the sidebar.</div></td></tr>';
-  } else {
-    tb.innerHTML = quizzes.map(row).join('');
-    wire();
+  function renderTable() {
+    if (!quizzes.length) {
+      tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
+        'No quizzes yet — use Create quiz in the sidebar.</div></td></tr>';
+    } else {
+      tb.innerHTML = quizzes.map(row).join('');
+      wire();
+    }
   }
+  await refresh();
 
   function row(q) {
     var qCell = '<b>' + esc(q.title) + '</b><br><span class="small muted">' + esc(q.subject) + '</span>';
@@ -119,9 +128,11 @@
         b.disabled = true;
         var q = quizzes.find(function (x) { return x.id === b.getAttribute('data-pub'); });
         try {
-          await PUT('/api/quizzes/' + q.id, { published: !q.published });
-          toast(q.published ? 'Quiz unpublished — hidden from students' : 'Quiz published — students can now take it');
-          setTimeout(function () { location.reload(); }, 600);
+          var r = await PUT('/api/quizzes/' + q.id, { published: !q.published });
+          q.published = r.quiz.published;
+          toast(q.published ? 'Quiz published — students were notified' : 'Quiz unpublished — hidden from students');
+          renderStats();
+          renderTable();
         } catch (err) { toast(err.message, 'bad'); b.disabled = false; }
       };
     });
@@ -134,8 +145,13 @@
           okText: 'Delete permanently', danger: true
         });
         if (!ok) return;
-        try { await DEL('/api/quizzes/' + q.id); toast('Quiz deleted'); setTimeout(function () { location.reload(); }, 500); }
-        catch (err) { toast(err.message, 'bad'); }
+        try {
+          await DEL('/api/quizzes/' + q.id);
+          toast('Quiz deleted');
+          quizzes = quizzes.filter(function (x) { return x.id !== q.id; });
+          renderStats();
+          renderTable();
+        } catch (err) { toast(err.message, 'bad'); }
       };
     });
   }
@@ -171,7 +187,8 @@
         var parsed = JSON.parse(reader.result);
         var r = await POST('/api/admin/import', parsed);
         toast('Database restored — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
-        setTimeout(function () { location.href = 'teacher.html'; }, 1000);
+        await refresh();
+        loadClass();
       } catch (err) { toast(err.message, 'bad'); }
     };
     reader.readAsText(f);
@@ -276,7 +293,10 @@
       try {
         var r = await POST('/api/admin/cloud/restore', {});
         toast('Restored from cloud — ' + r.quizzes + ' quizzes, ' + r.users + ' users, ' + r.attempts + ' attempts');
-        setTimeout(function () { location.reload(); }, 900);
+        await refresh();
+        loadClass();
+        loadCloud();
+        this.disabled = false;
         return;
       } catch (err) { toast(err.message, 'bad'); }
       this.disabled = false;

@@ -51,6 +51,7 @@
   document.getElementById('welcome').textContent =
     'Welcome back, ' + user.name.split(' ')[0] + ' — results appear here the moment you submit.';
 
+  async function loadAll() {
   var data = await Promise.all([
     GET('/api/quizzes'),
     GET('/api/me/attempts'),
@@ -96,7 +97,7 @@
         try {
           var r = await POST('/api/classes/join', { code: document.getElementById('joinCode').value });
           toast('Joined ' + r.class.name + ' — its quizzes now appear on your dashboard');
-          loadClasses();
+          loadAll();
         } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
       };
     } catch (err) {
@@ -183,6 +184,8 @@
           '<span class="sc">' + fmtPct(r.avgBest) + '</span></li>';
       }).join('')
     : '<li class="muted">No results yet.</li>';
+  }
+  loadAll();
 })().catch(function () {});
 </script>
 </body>
