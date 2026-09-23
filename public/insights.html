@@ -195,7 +195,7 @@
     var timeLeft = r.status === 'in_progress'
       ? '<span class="mono" style="font-weight:700">' + fmtClock((r.endsAt - (Date.now() + monOffset)) / 1000) + '</span>'
       : '<span class="small muted">' + fmtDur(r.durationUsedSec) + ' used</span>';
-    var score = r.score ? '<b class="mono">' + r.score + '</b>' : '—';
+    var score = r.score ? '<b>' + r.score + '</b>' : '—';
     var outcome = r.status !== 'in_progress'
       ? '<span class="badge ' + (r.passed ? 'ok' : 'bad') + '">' + fmtPct(r.percent) + '</span>'
       : (r.tabSwitches ? '<span class="badge warn">' + r.tabSwitches + ' switches</span>' : '<span class="muted">—</span>');
@@ -234,7 +234,7 @@
       tb.innerHTML = r.rows.map(function (a) {
         return '<tr>' +
           '<td><b>' + esc(a.student) + '</b></td>' +
-          '<td class="mono">' + a.score + '/' + a.maxScore + '</td>' +
+          '<td><b>' + a.score + '/' + a.maxScore + '</b></td>' +
           '<td><b>' + fmtPct(a.percent) + '</b></td>' +
           '<td><span class="badge ' + (a.passed ? 'ok' : 'bad') + '">' + (a.passed ? 'Pass' : 'Fail') + '</span></td>' +
           '<td>' + fmtDur(a.durationUsedSec) + '</td>' +
@@ -299,7 +299,7 @@
             '<td><b>' + it.index + '</b></td>' +
             '<td style="max-width:340px">' + esc(it.text.length > 80 ? it.text.slice(0, 80) + '…' : it.text) + '</td>' +
             '<td>' + it.correct + '</td><td>' + it.wrong + '</td><td>' + it.skipped + '</td>' +
-            '<td><div class="row" style="min-width:130px"><div class="facil"><i style="width:' + it.facility + '%"></i></div><span class="small mono">' + it.facility + '%</span></div></td>' +
+            '<td><div class="row" style="min-width:130px"><div class="facil"><i style="width:' + it.facility + '%"></i></div><span class="small"><b>' + it.facility + '%</b></span></div></td>' +
             '<td><span class="badge ' + cls + '">' + it.difficulty + '</span></td>' +
             '</tr>';
         }).join('');

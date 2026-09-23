@@ -241,7 +241,7 @@
             : '<span class="badge ok">Submitted</span>';
           return '<tr>' +
             '<td><b>' + esc(a.quizTitle) + '</b></td>' +
-            '<td class="mono">' + (a.status === 'in_progress' ? '—' : a.score + '/' + a.maxScore) + '</td>' +
+            '<td><b>' + (a.status === 'in_progress' ? '—' : a.score + '/' + a.maxScore) + '</b></td>' +
             '<td><b>' + (a.status === 'in_progress' ? '—' : fmtPct(a.percent)) + '</b></td>' +
             '<td>' + (a.status === 'in_progress' ? '—' : '<span class="badge ' + (a.passed ? 'ok' : 'bad') + '">' + (a.passed ? 'Pass' : 'Fail') + '</span>') + '</td>' +
             '<td>' + statusBadge + '</td>' +
