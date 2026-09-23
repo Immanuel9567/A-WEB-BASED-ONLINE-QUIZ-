@@ -32,7 +32,7 @@
   <section class="card tablecard">
     <table>
       <thead><tr><th>Quiz</th><th>Score</th><th>Percent</th><th>Outcome</th><th>Time used</th><th>Submitted</th><th></th></tr></thead>
-      <tbody id="results"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+      <tbody id="resultsBody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
 
@@ -156,7 +156,7 @@
   }
 
   /* ---- results table ----------------------------------------------------- */
-  var rEl = document.getElementById('results');
+  var rEl = document.getElementById('resultsBody');
   if (!mine.length) {
     rEl.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
       'No results yet — take your first quiz above.</div></td></tr>';
