@@ -64,6 +64,20 @@
             <input id="qsAtt" type="number" value="2" min="1" max="10">
           </div>
         </div>
+        <div class="formrow">
+          <div class="field">
+            <label for="qsOpens">Opens at (optional)</label>
+            <input id="qsOpens" type="datetime-local">
+          </div>
+          <div class="field">
+            <label for="qsCloses">Closes at (optional)</label>
+            <input id="qsCloses" type="datetime-local">
+          </div>
+        </div>
+        <div class="hint" style="margin:-4px 0 14px">
+          Schedule the quiz to a period, e.g. Friday 8:00 PM to 9:00 PM — students can only start
+          inside that period, and anything still in progress ends when it closes. Leave both empty for no schedule.
+        </div>
         <div class="setrow">
           <label class="sw"><input type="checkbox" id="setShuffle"><i></i></label>
           <div class="stxt"><b>Shuffle questions per student</b><span>Different order for each candidate.</span></div>
@@ -233,6 +247,8 @@
     document.getElementById('qsDur').value = quiz.durationMin;
     document.getElementById('qsPass').value = quiz.passMark;
     document.getElementById('qsAtt').value = quiz.attemptsAllowed;
+    dtSet('qsOpens', quiz.opensAt);
+    dtSet('qsCloses', quiz.closesAt);
     renderVis(quiz.classes || []);
   }
 
@@ -254,6 +270,19 @@
   if (!creating) paintPub();
 
   /* ================= quiz settings (create + edit) ================= */
+  function dtVal(id) { // datetime-local string -> ms (or null when empty)
+    var v = document.getElementById(id).value;
+    if (!v) return null;
+    var d = new Date(v);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  }
+  function dtSet(id, ts) { // ms -> datetime-local string
+    var el = document.getElementById(id);
+    if (!ts) { el.value = ''; return; }
+    var d = new Date(ts);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    el.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
   var setShuffle = document.getElementById('setShuffle');
   var setShuffleOpt = document.getElementById('setShuffleOpt');
   var setTab = document.getElementById('setTab');
@@ -261,6 +290,11 @@
     setShuffle.checked = !!quiz.shuffle;
     setShuffleOpt.checked = !!quiz.shuffleOptions;
     setTab.value = quiz.tabSwitchPolicy || 'warn';
+    dtSet('qsOpens', quiz.opensAt);
+    dtSet('qsCloses', quiz.closesAt);
+  } else {
+    dtSet('qsOpens', null);
+    dtSet('qsCloses', null);
   }
   document.getElementById('saveSettings').onclick = async function () {
     var btn = this;
@@ -268,6 +302,12 @@
     errBox.hidden = true;
     if (!selectedClasses().length) {
       errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick at least one class — only its members can see the quiz.</span>';
+      errBox.hidden = false;
+      return;
+    }
+    var opensAt = dtVal('qsOpens'), closesAt = dtVal('qsCloses');
+    if (opensAt && closesAt && closesAt <= opensAt) {
+      errBox.innerHTML = icon('alertCircle', 16) + '<span>The closing time must be after the opening time.</span>';
       errBox.hidden = false;
       return;
     }
@@ -282,6 +322,8 @@
       shuffle: setShuffle.checked,
       shuffleOptions: setShuffleOpt.checked,
       tabSwitchPolicy: setTab.value,
+      opensAt: opensAt,
+      closesAt: closesAt,
       classes: selectedClasses()
     };
     try {

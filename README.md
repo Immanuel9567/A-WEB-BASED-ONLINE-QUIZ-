@@ -70,7 +70,8 @@ its join code — then create quizzes and let students register and join with th
   scores, outcomes, timing and integrity flags, and jump straight to each result review.
 
 **Classes with join codes**
-- Teachers can run **several classes** — register with your first class name (ClassMark generates
+- Teachers can run **several classes** — register with the **course code you teach** (e.g.
+  CSC 204); it becomes your first class (ClassMark generates
   a **unique join code** for it) and add more from the dashboard at any time.
 - Students **join classes with a code** (as many as they like) from their dashboard, and
   their joined classes appear in the sidebar for one-click navigation.
@@ -79,6 +80,9 @@ its join code — then create quizzes and let students register and join with th
   no quizzes at all; there is no public visibility.
 - **Class settings** (gear on the class page): pick a **class colour** and rename the class —
   the colour tints that class's quiz cards and notifications on student dashboards.
+- **Quiz windows** — schedule a quiz to a set period (e.g. Friday 8:00 PM → 9:00 PM):
+  students can only start inside the window, anything still in progress ends when it
+  closes, and closed quizzes show a "Closed" badge. Leave both times empty for no schedule.
 - **Manage students**: the class page shows every member with their stats, and the teacher
   can **remove (kick)** a student from the class at any time.
 - **Sorting analytics (teacher only)**: on the students page, sort the whole school or any

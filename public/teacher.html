@@ -88,6 +88,13 @@
       '<tr><td colspan="8" class="muted">Could not load your quizzes — ' + esc(e.message) + '</td></tr>';
   }
 
+  function winLabel(q) {
+    var t = Date.now();
+    if (q.opensAt && t < q.opensAt) return 'Opens ' + fmtWhen(q.opensAt);
+    if (q.closesAt && t > q.closesAt) return 'Closed ' + fmtWhen(q.closesAt);
+    if (q.closesAt) return 'Closes ' + fmtWhen(q.closesAt);
+    return 'Opens ' + fmtWhen(q.opensAt);
+  }
   function row(q) {
     var qCell = '<b>' + esc(q.title) + '</b><br><span class="small muted">' + esc(q.subject) + '</span>';
     if (q.draftCount > 0) qCell += ' <span class="chip">' + q.draftCount + ' draft' + (q.draftCount > 1 ? 's' : '') + '</span>';
@@ -97,7 +104,8 @@
     if (!(q.classInfo || []).length) qCell += ' <span class="chip">No class — students cannot see it</span>';
     return '<tr>' +
       '<td>' + qCell + '</td>' +
-      '<td>' + (q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>') + '</td>' +
+      '<td>' + (q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>') +
+        (q.opensAt || q.closesAt ? '<br><span class="small muted">' + winLabel(q) + '</span>' : '') + '</td>' +
       '<td>' + q.questionCount + ' <span class="small muted">(' + q.totalPoints + ' pts)</span></td>' +
       '<td>' + q.durationMin + ' min</td>' +
       '<td>' + q.passMark + '%</td>' +

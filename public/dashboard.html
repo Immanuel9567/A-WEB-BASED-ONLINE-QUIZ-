@@ -56,7 +56,9 @@
   var mine = data[1].attempts.filter(function (a) { return a.status !== 'in_progress'; });
 
   /* ---- stats ------------------------------------------------------------ */
-  var available = quizzes.filter(function (q) { return q.inProgressAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0); });
+  var available = quizzes.filter(function (q) {
+    return winState(q) === 'open' && (q.inProgressAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0));
+  });
   var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
   var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
   document.getElementById('stats').innerHTML =
@@ -122,14 +124,20 @@
     var cls = (q.classInfo && q.classInfo.length) ? q.classInfo : null;
     var cc = cls && cls[0] && cls[0].color ? cls[0].color : '';
     var actions = '';
+    var win = winState(q);
     if (q.inProgressAttemptId) {
       actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.inProgressAttemptId + '">' + icon('chevronRight', 15) + ' Resume attempt</a>';
+    } else if (win === 'upcoming') {
+      actions = '<span class="badge plain">Not open yet — opens ' + fmtWhen(q.opensAt) + '</span>';
+    } else if (win === 'closed') {
+      actions = '<span class="badge warn">Closed ' + fmtWhen(q.closesAt) + '</span>';
     } else if (q.attemptsUsed >= q.attemptsAllowed) {
       actions = '<span class="badge plain">No attempts left</span>';
     } else if (!q.questionCount) {
       actions = '<span class="badge plain">No questions yet</span>';
     } else {
-      actions = '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Start quiz') + '</button>';
+      actions = '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Start quiz') + '</button>' +
+        (q.closesAt ? '' : '');
     }
     var outcome = '';
     if (q.bestPercent != null) {
@@ -149,6 +157,7 @@
       '<span>' + icon('timer', 14) + ' ' + q.durationMin + ' min</span>' +
       '<span>' + icon('helpCircle', 14) + ' ' + q.questionCount + ' questions</span>' +
       '<span>' + icon('flag', 14) + ' pass ' + q.passMark + '%</span>' +
+      (q.closesAt && win === 'open' ? '<span>' + icon('timer', 14) + ' closes ' + fmtWhen(q.closesAt) + '</span>' : '') +
       '</div>' +
       '<div class="row small muted" style="margin-bottom:16px">Attempts used: <b>&nbsp;' + q.attemptsUsed + '/' + q.attemptsAllowed + '</b></div>' +
       actions +

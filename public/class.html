@@ -199,12 +199,19 @@
 
   function card(q) {
     var actions = '';
+    var win = winState(q);
     if (owner) {
       actions = '<div class="row">' +
         '<a class="btn sm block" href="builder.html?id=' + q.id + '">' + icon('edit', 13) + ' Questions</a>' +
-        '<a class="btn sm primary block" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' Insights</a></div>';
+        '<a class="btn sm primary block" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' Insights</a></div>' +
+        (q.opensAt || q.closesAt ? '<div class="row small muted" style="margin-top:8px">' + icon('timer', 14) + ' ' +
+          (win === 'upcoming' ? 'opens ' + fmtWhen(q.opensAt) : win === 'closed' ? 'closed ' + fmtWhen(q.closesAt) : 'closes ' + fmtWhen(q.closesAt)) + '</div>' : '');
     } else if (q.inProgressAttemptId) {
       actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.inProgressAttemptId + '">' + icon('chevronRight', 15) + ' Resume attempt</a>';
+    } else if (win === 'upcoming') {
+      actions = '<span class="badge plain">Not open yet — opens ' + fmtWhen(q.opensAt) + '</span>';
+    } else if (win === 'closed') {
+      actions = '<span class="badge warn">Closed ' + fmtWhen(q.closesAt) + '</span>';
     } else if (q.attemptsUsed >= q.attemptsAllowed) {
       actions = '<span class="badge plain">No attempts left</span>';
     } else if (!q.questionCount) {

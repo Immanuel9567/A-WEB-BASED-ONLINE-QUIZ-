@@ -75,9 +75,9 @@
           <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
         </div>
         <div class="field" id="classField" hidden>
-          <label for="rgClass">Class name</label>
-          <input id="rgClass" type="text" placeholder="e.g. JSS 2 Blue">
-          <div class="hint">Your class gets a unique join code — students use it to join your class.</div>
+          <label for="rgClass">Course code you teach</label>
+          <input id="rgClass" type="text" placeholder="e.g. CSC 204">
+          <div class="hint">Your course becomes your class, with a unique join code students use to join it.</div>
         </div>
         <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
       </form>
@@ -163,7 +163,7 @@
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
       if (role === 'teacher' && !document.getElementById('rgClass').value.trim()) {
-        throw new Error('Please enter a class name (e.g. JSS 2 Blue).');
+        throw new Error('Please enter the course code you teach (e.g. CSC 204).');
       }
       var r = await POST('/api/auth/register', {
         name: document.getElementById('rgName').value,

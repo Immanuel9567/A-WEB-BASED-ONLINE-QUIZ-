@@ -349,6 +349,7 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
   const myDone = mine.filter((a) => a.status !== 'in_progress');
   const inprog = mine.find((a) => a.status === 'in_progress');
   return Object.assign(meta(q), {
+    opensAt: q.opensAt || null, closesAt: q.closesAt || null,
     classInfo,
     questionCount: live.length,
     draftCount: qs.length - live.length,
@@ -377,9 +378,15 @@ route('GET', '/api/quizzes', async ({ user, res }) => {
   send(res, 200, { quizzes: out });
 });
 
+function fmtTs(ts) { // server-side timestamp for window messages
+  return new Date(ts).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
 function validQuizBody(body) {
   const title = String(body.title || '').trim();
   if (title.length < 3) return { error: 'Title must be at least 3 characters.' };
+  const opensAt = body.opensAt == null ? null : (Number(body.opensAt) || null);
+  const closesAt = body.closesAt == null ? null : (Number(body.closesAt) || null);
+  if (opensAt && closesAt && closesAt <= opensAt) return { error: 'The closing time must be after the opening time.' };
   return {
     title,
     subject: String(body.subject || '').trim() || 'General',
@@ -390,7 +397,8 @@ function validQuizBody(body) {
     shuffle: !!body.shuffle,
     shuffleOptions: !!body.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(body.tabSwitchPolicy) ? body.tabSwitchPolicy : 'warn',
-    published: !!body.published
+    published: !!body.published,
+    opensAt, closesAt
   };
 }
 
@@ -559,6 +567,13 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   const allQs = db.questions[quiz.id] || [];
   const qs = allQs.filter((q) => !q.draft); // drafts never reach students
   if (!qs.length) return send(res, 400, { error: 'This quiz has no questions yet (only drafts or empty).' });
+  const tNow = now(); // availability window — e.g. Friday 8 PM to 9 PM
+  if (quiz.opensAt && tNow < quiz.opensAt) {
+    return send(res, 403, { error: 'This quiz is not open yet — it opens ' + fmtTs(quiz.opensAt) + '.' });
+  }
+  if (quiz.closesAt && tNow > quiz.closesAt) {
+    return send(res, 403, { error: 'This quiz closed on ' + fmtTs(quiz.closesAt) + '.' });
+  }
   const existing = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'in_progress');
   if (existing) return send(res, 200, attemptPayload(existing)); // resume
   const myDone = db.attempts.filter((a) => a.userId === user.id && a.quizId === quiz.id && a.status !== 'in_progress');
@@ -589,7 +604,8 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   }
   const a = {
     id: uid('a'), quizId: quiz.id, userId: user.id, startedAt: now(),
-    endsAt: now() + quiz.durationMin * 60000, status: 'in_progress',
+    // the attempt also expires when the quiz window closes, whichever comes first
+    endsAt: Math.min(now() + quiz.durationMin * 60000, quiz.closesAt || Infinity), status: 'in_progress',
     answers: {}, tabSwitches: 0, questionOrder: order, optionOrder
   };
   db.attempts.push(a);

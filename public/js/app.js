@@ -496,6 +496,14 @@
   }
 
   /* ---------------- profile editing modal --------------------------------- */
+  /* quiz availability window: 'upcoming' | 'open' | 'closed' */
+  window.winState = function (q) {
+    var t = Date.now();
+    if (q.opensAt && t < q.opensAt) return 'upcoming';
+    if (q.closesAt && t > q.closesAt) return 'closed';
+    return 'open';
+  };
+
   window.editProfile = function (user) {
     return new Promise(function (resolve) {
       var ov = document.createElement('div');
