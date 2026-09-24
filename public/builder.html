@@ -43,7 +43,7 @@
           <div class="field">
             <label>Visible to</label>
             <div id="visWrap" class="viswrap"></div>
-            <div class="hint">Leave "All students" checked for everyone, or pick one or more of your classes.</div>
+            <div class="hint">Only students in the selected class(es) can see and take this quiz.</div>
           </div>
         </div>
         <div class="field">
@@ -192,34 +192,19 @@
   } catch (err) {}
   function renderVis(selected) {
     var sel = selected || [];
-    var html = '<label class="visopt"><input type="checkbox" id="visAll"' + (!sel.length ? ' checked' : '') + '><span>All students</span></label>';
+    var html = '';
     myClasses.forEach(function (c) {
       html += '<label class="visopt"><input type="checkbox" data-cls="' + esc(c.id) + '"' + (sel.indexOf(c.id) >= 0 ? ' checked' : '') + '>' +
         (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') +
         '<span>' + esc(c.name) + '</span></label>';
     });
-    if (!myClasses.length) html += '<div class="hint" style="margin:4px 0 0">No classes yet — create one on your dashboard to assign quizzes to a class.</div>';
+    if (!myClasses.length) html += '<div class="hint" style="margin:4px 0 0">No classes yet — create one on your dashboard first; quizzes are visible only to class members.</div>';
     visWrap.innerHTML = html;
-    var allEl = document.getElementById('visAll');
-    /* ticking a class switches off "All students"; ticking "All students"
-       clears the classes; unchecking your last class returns to everyone */
-    if (allEl) allEl.onchange = function () {
-      if (allEl.checked) $$('[data-cls]', visWrap).forEach(function (b) { b.checked = false; });
-    };
-    $$('[data-cls]', visWrap).forEach(function (b) {
-      b.onchange = function () {
-        if (b.checked) { if (allEl) allEl.checked = false; return; }
-        var any = $$('[data-cls]', visWrap).some(function (x) { return x.checked; });
-        if (!any && allEl) allEl.checked = true;
-      };
-    });
   }
   function selectedClasses() {
-    var allEl = document.getElementById('visAll');
-    if (allEl && allEl.checked) return [];
     return $$('[data-cls]', visWrap).filter(function (b) { return b.checked; }).map(function (b) { return b.getAttribute('data-cls'); });
   }
-  renderVis([]);
+  renderVis(myClasses.length === 1 ? [myClasses[0].id] : []); // preselect the only class, if there is just one
 
   var quiz = null;
   var questions = [];
@@ -281,6 +266,11 @@
     var btn = this;
     var errBox = document.getElementById('setErr');
     errBox.hidden = true;
+    if (!selectedClasses().length) {
+      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick at least one class — only its members can see the quiz.</span>';
+      errBox.hidden = false;
+      return;
+    }
     btn.disabled = true;
     var payload = {
       title: document.getElementById('qsTitle').value,

@@ -94,6 +94,7 @@
     (q.classInfo || []).forEach(function (c) {
       qCell += ' <span class="chip classchip">' + (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>';
     });
+    if (!(q.classInfo || []).length) qCell += ' <span class="chip">No class — students cannot see it</span>';
     return '<tr>' +
       '<td>' + qCell + '</td>' +
       '<td>' + (q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>') + '</td>' +

@@ -74,8 +74,9 @@ its join code — then create quizzes and let students register and join with th
   a **unique join code** for it) and add more from the dashboard at any time.
 - Students **join classes with a code** (as many as they like) from their dashboard, and
   their joined classes appear in the sidebar for one-click navigation.
-- Quizzes can be visible to **all students** or to **any selection of your classes**; class
-  quizzes appear just for members, tagged with the class name on each quiz card.
+- Every quiz is assigned to **one or more of the teacher's classes** — only members see it,
+  tagged with the class name on each quiz card. A student who has not joined any class sees
+  no quizzes at all; there is no public visibility.
 - **Class settings** (gear on the class page): pick a **class colour** and rename the class —
   the colour tints that class's quiz cards and notifications on student dashboards.
 - **Manage students**: the class page shows every member with their stats, and the teacher

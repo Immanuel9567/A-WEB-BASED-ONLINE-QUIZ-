@@ -104,7 +104,7 @@
   var qEl = document.getElementById('quizzes');
   if (!quizzes.length) {
     qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('inbox', 34) + '</div>' +
-      'No quizzes have been published yet. Check back soon.</div></div>';
+      'No quizzes yet — join your teacher\'s class with a class code and their quizzes will appear here.</div></div>';
   } else {
     qEl.innerHTML = quizzes.map(card).join('');
     $$('#quizzes [data-start]').forEach(function (btn) {

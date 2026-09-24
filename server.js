@@ -235,26 +235,20 @@ function myClassIds(u) {
 }
 function canSeeQuiz(u, q) {
   if (!u || u.role === 'teacher') return true;
-  const cs = q.classes || [];
-  return !cs.length || cs.some((id) => myClassIds(u).includes(id));
+  return (q.classes || []).some((id) => myClassIds(u).includes(id)); // class members only — never public
 }
 function sanitizeClasses(list, teacher) {
   if (!Array.isArray(list)) return [];
   const mine = db.classes.filter((c) => c.teacherId === teacher.id).map((c) => c.id);
   return [...new Set(list)].filter((id) => mine.includes(id));
 }
-function notifyQuizPublished(quiz, teacher) {
-  let targets;
-  if ((quiz.classes || []).length) {
-    const ids = new Set();
-    for (const cid of quiz.classes) {
-      const c = byId(db.classes, cid);
-      if (c) (c.studentIds || []).forEach((sid) => ids.add(sid));
-    }
-    targets = [...ids].map((sid) => byId(db.users, sid)).filter((u) => u && u.role === 'student');
-  } else {
-    targets = db.users.filter((u) => u.role === 'student');
+function notifyQuizPublished(quiz, teacher) { // members of the quiz's classes only
+  const ids = new Set();
+  for (const cid of (quiz.classes || [])) {
+    const c = byId(db.classes, cid);
+    if (c) (c.studentIds || []).forEach((sid) => ids.add(sid));
   }
+  const targets = [...ids].map((sid) => byId(db.users, sid)).filter((u) => u && u.role === 'student');
   for (const st of targets) {
     db.notifications.push({
       id: uid('n'), userId: st.id, quizId: quiz.id, quizTitle: quiz.title,
@@ -407,6 +401,7 @@ route('POST', '/api/quizzes', async ({ user, body, res }) => {
   if (v.error) return send(res, 400, { error: v.error });
   const quiz = Object.assign({ id: uid('qz'), createdAt: now(), createdBy: user.id }, v);
   quiz.classes = sanitizeClasses(body.classes, user);
+  if (!quiz.classes.length) return send(res, 400, { error: 'Pick at least one class — only its members can see the quiz.' });
   db.quizzes.push(quiz);
   db.questions[quiz.id] = [];
   if (quiz.published) notifyQuizPublished(quiz, user);
@@ -517,9 +512,11 @@ route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res })
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
   const v = validQuizBody(Object.assign({}, quiz, body));
   if (v.error) return send(res, 400, { error: v.error });
+  const nextClasses = body.classes !== undefined ? sanitizeClasses(body.classes, user) : (quiz.classes || []);
+  if (!nextClasses.length) return send(res, 400, { error: 'Pick at least one class — only its members can see the quiz.' });
   const wasPublished = quiz.published;
   Object.assign(quiz, v);
-  if (body.classes !== undefined) quiz.classes = sanitizeClasses(body.classes, user);
+  quiz.classes = nextClasses;
   if (!wasPublished && quiz.published) notifyQuizPublished(quiz, user);
   saveDb();
   send(res, 200, { quiz: meta(quiz) });
