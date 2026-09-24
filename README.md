@@ -14,17 +14,21 @@ notifications, and result analytics.
 
 ```bash
 cd quiz-system
-node server.js          # zero dependencies — only Node.js (14+) is required
+npm install             # one runtime dependency: better-sqlite3
+node server.js
 # open http://localhost:3000
 ```
 
-The JSON datastore is created automatically at `data/db.json` on first run.
+The **SQLite database** is created automatically at `data/classmark.db` on first run,
+with a JSON mirror at `data/db.json` (also the format of the encrypted cloud backup).
+If you are upgrading from the older JSON-only version, your existing `data/db.json` is
+**imported and migrated automatically — no data is ever wiped**.
 
 ### First run — no seeded accounts
 
 The system starts **completely empty** (no demo users or quizzes). Register the first
-teacher from the sign-in page — you'll name your first class during registration and get
-its join code — then create quizzes and let students register and join with the code.
+teacher from the sign-in page — you get a class automatically with its join code — then
+create your courses and quizzes inside it, and let students register and join with the code.
 
 ---
 
@@ -69,15 +73,21 @@ its join code — then create quizzes and let students register and join with th
 - **Per-student quiz history** — click any student to see their full attempt history with
   scores, outcomes, timing and integrity flags, and jump straight to each result review.
 
-**Classes with join codes**
-- Teachers can run **several classes** — register with the **course code you teach** (e.g.
-  CSC 204); it becomes your first class (ClassMark generates
-  a **unique join code** for it) and add more from the dashboard at any time.
-- Students **join classes with a code** (as many as they like) from their dashboard, and
-  their joined classes appear in the sidebar for one-click navigation.
-- Every quiz is assigned to **one or more of the teacher's classes** — only members see it,
-  tagged with the class name on each quiz card. A student who has not joined any class sees
-  no quizzes at all; there is no public visibility.
+**Classes, courses and join codes**
+- Every teacher **owns a class automatically from sign-up** ("My Class", renameable) with a
+  **unique join code**, and can create more classes at any time — each with its own code.
+- **Quick settings card** on the teacher dashboard: create a class, manage classes (when
+  there is more than one) and a list of every class you own with its join code — **tap a
+  code to copy it**. The join code is also displayed boldly in the header of each class page.
+- **Courses live inside classes** — a teacher creates a course (e.g. CSC 204) in any of their
+  classes and every quiz belongs to one course. Courses can be renamed or deleted from the
+  class page, and quizzes can be filtered by course.
+- Students **join classes with a code** (as many as they like) from their dashboard and
+  **automatically get access to every course in the class** — there are no per-course codes.
+  Their joined classes appear in the sidebar for one-click navigation.
+- Only class members can see a class's courses and quizzes — tagged with the class and course
+  on each quiz card. A student who has not joined any class sees no quizzes at all; there is
+  no public visibility, and each teacher sees only their own quizzes.
 - **Class settings** (gear on the class page): pick a **class colour** and rename the class —
   the colour tints that class's quiz cards and notifications on student dashboards.
 - **Quiz windows** — schedule a quiz to a set period (e.g. Friday 8:00 PM → 9:00 PM):
@@ -149,15 +159,16 @@ restore, joining a class — also update the screen in place.
 └───────────────┬─────────────────────────────────────────────────────────┘
                 │  REST + JSON  (Authorization: Bearer <token>)
 ┌───────────────▼─────────────────────────────────────────────────────────┐
-│  server.js  —  zero-dependency Node.js HTTP server                     │
+│  server.js  —  Node.js HTTP server (one dep: better-sqlite3)           │
 │  ├── static file serving          (public/)                            │
-│  ├── REST API                     (/api/auth /quizzes /questions /...)  │
+│  ├── REST API                     (/api/auth /quizzes /courses /...)    │
 │  ├── grading engine               (finishAttempt — runs on submit,      │
 │  │                                 tab-switch enforcement AND timeout   │
 │  │                                 via 10s sweeper)                     │
 │  ├── notifications                (grouped by quiz for the teacher)     │
 │  ├── attempt lifecycle            (start · autosave · expire · submit)  │
-│  └── JSON document store          (data/db.json, atomic writes)         │
+│  └── SQLite store                 (data/classmark.db + JSON mirror,     │
+│                                    encrypted cloud backup on a branch)  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -211,13 +222,18 @@ restore, joining a class — also update the screen in place.
 | `GET /api/quizzes/:id/monitor` | teacher | Live session snapshot (summary + rows + not-started) |
 | `GET /api/quizzes/:id/attempts` | teacher | Graded attempts table |
 | `GET /api/quizzes/:id/analytics` | teacher | Stats, distribution, item analysis, per-quiz top performers |
-| `GET /api/classes/mine` | teacher | The teacher's class + join code |
+| `GET /api/classes/mine` | teacher | The teacher's classes + join codes + course counts |
 | `POST /api/classes` | teacher | Create a class (name) — returns its unique code |
-| `GET /api/classes` | any | Teacher: own class · Student: classes joined |
+| `GET /api/classes` | any | Teacher: own classes · Student: classes joined |
 | `POST /api/classes/join` | student | Join a class with its code |
 | `PUT /api/classes/:id` | owner teacher | Rename a class / set its colour |
+| `DELETE /api/classes/:id` | owner teacher | Delete a class (blocked while its quizzes have attempts) |
 | `POST /api/classes/:id/kick` | owner teacher | Remove a student from the class |
-| `GET /api/classes/:id` | member | Class detail: quizzes (+ members & stats for the owner) |
+| `GET /api/classes/:id` | member | Class detail: courses, quizzes (+ members & stats for the owner) |
+| `GET /api/courses/mine` | teacher | All courses across the teacher's classes |
+| `POST /api/classes/:id/courses` | owner teacher | Create a course in the class |
+| `PUT /api/courses/:id` | owner teacher | Rename a course |
+| `DELETE /api/courses/:id` | owner teacher | Delete a course (blocked while it has quizzes) |
 | `GET /api/admin/cloud/status` | teacher | Cloud save connection + last save state |
 | `POST /api/admin/cloud/connect` | teacher | Connect cloud storage (token + passphrase) |
 | `POST /api/admin/cloud/save` | teacher | Push the database to the cloud now |
@@ -249,7 +265,8 @@ quiz-system/
 ├── server.js              # HTTP server, REST API, grading engine
 ├── package.json           # npm start wrapper (for hosts & Render auto-detect)
 ├── render.yaml            # one-click deploy blueprint
-├── data/db.json           # JSON datastore (auto-created, git-ignored)
+├── data/classmark.db      # SQLite database (auto-created, git-ignored)
+├── data/db.json           # JSON mirror of the database (git-ignored)
 └── public/
     ├── css/style.css      # Material white design system, single blue accent
     ├── js/app.js          # shared helpers + uniform inline-SVG icon pack

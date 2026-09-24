@@ -6,8 +6,11 @@
   "scripts": {
     "start": "node server.js"
   },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
   "engines": {
-    "node": ">=14"
+    "node": ">=18"
   },
   "repository": {
     "type": "git",

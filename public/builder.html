@@ -37,14 +37,21 @@
         </div>
         <div class="formrow">
           <div class="field">
-            <label for="qsSubject">Subject / course code</label>
-            <input id="qsSubject" type="text" placeholder="e.g. Computer Science (CSC 204)">
+            <label for="qsSubject">Subject</label>
+            <input id="qsSubject" type="text" placeholder="e.g. Data Structures">
           </div>
-          <div class="field">
-            <label>Visible to</label>
-            <div id="visWrap" class="viswrap"></div>
-            <div class="hint">Only students in the selected class(es) can see and take this quiz.</div>
+        </div>
+        <div class="field">
+          <label>Class &amp; course</label>
+          <div class="row" style="gap:10px">
+            <select id="qsClass" style="flex:1"></select>
+            <select id="qsCourse" style="flex:1"></select>
           </div>
+          <div class="row" id="crsNewRow" hidden style="margin-top:8px;gap:10px;flex-wrap:wrap">
+            <input id="crsNewName" type="text" placeholder="New course name, e.g. CSC 204" style="flex:1;min-width:160px">
+            <button class="btn sm primary" id="crsNewBtn"></button>
+          </div>
+          <div class="hint">Quizzes live inside a course. Students in the class see every course automatically — no extra code needed.</div>
         </div>
         <div class="field">
           <label for="qsDesc">Description</label>
@@ -197,28 +204,49 @@
   document.getElementById('resetBtn').innerHTML = icon('x', 14) + ' Cancel edit';
   $('#backLink').href = 'teacher.html';
 
-  /* ---- visibility: multi-class selector (all students, or any of my classes) ---- */
-  var visWrap = document.getElementById('visWrap');
-  var myClasses = [];
+  /* ---- class & course: a quiz lives inside one course of one of my classes ---- */
+  var myClasses = [], myCourses = [];
   try {
     var cd = await GET('/api/classes/mine');
     myClasses = cd.classes || [];
   } catch (err) {}
-  function renderVis(selected) {
-    var sel = selected || [];
-    var html = '';
-    myClasses.forEach(function (c) {
-      html += '<label class="visopt"><input type="checkbox" data-cls="' + esc(c.id) + '"' + (sel.indexOf(c.id) >= 0 ? ' checked' : '') + '>' +
-        (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') +
-        '<span>' + esc(c.name) + '</span></label>';
-    });
-    if (!myClasses.length) html += '<div class="hint" style="margin:4px 0 0">No classes yet — create one on your dashboard first; quizzes are visible only to class members.</div>';
-    visWrap.innerHTML = html;
+  try {
+    var crd = await GET('/api/courses/mine');
+    myCourses = crd.courses || [];
+  } catch (err) {}
+  var selClass = document.getElementById('qsClass');
+  var selCourse = document.getElementById('qsCourse');
+  function fillClassSel(selectedId) {
+    selClass.innerHTML = myClasses.map(function (c) {
+      return '<option value="' + esc(c.id) + '"' + (c.id === selectedId ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+    }).join('') || '<option value="">No classes yet</option>';
   }
-  function selectedClasses() {
-    return $$('[data-cls]', visWrap).filter(function (b) { return b.checked; }).map(function (b) { return b.getAttribute('data-cls'); });
+  function coursesOfClass(classId) {
+    return myCourses.filter(function (x) { return x.classId === classId; });
   }
-  renderVis(myClasses.length === 1 ? [myClasses[0].id] : []); // preselect the only class, if there is just one
+  function fillCourseSel(classId, selectedId) {
+    var list = coursesOfClass(classId);
+    selCourse.innerHTML = list.map(function (x) {
+      return '<option value="' + esc(x.id) + '"' + (x.id === selectedId ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+    }).join('') || '<option value="">No courses yet</option>';
+    document.getElementById('crsNewRow').hidden = !!list.length;
+  }
+  selClass.onchange = function () { fillCourseSel(selClass.value, null); };
+  document.getElementById('crsNewBtn').innerHTML = icon('plus', 13) + ' Add course';
+  document.getElementById('crsNewBtn').onclick = async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var r = await POST('/api/classes/' + selClass.value + '/courses', { name: document.getElementById('crsNewName').value });
+      myCourses.push(r.course);
+      document.getElementById('crsNewName').value = '';
+      fillCourseSel(selClass.value, r.course.id);
+      toast('Course created — ' + r.course.name);
+    } catch (err) { toast(err.message, 'bad'); }
+    btn.disabled = false;
+  };
+  fillClassSel(myClasses.length === 1 ? myClasses[0].id : null); // preselect the only class, if there is just one
+  fillCourseSel(selClass.value, null);
 
   var quiz = null;
   var questions = [];
@@ -249,7 +277,8 @@
     document.getElementById('qsAtt').value = quiz.attemptsAllowed;
     dtSet('qsOpens', quiz.opensAt);
     dtSet('qsCloses', quiz.closesAt);
-    renderVis(quiz.classes || []);
+    var qc = myCourses.filter(function (x) { return x.id === (quiz.courseId || (quiz.course && quiz.course.id)); })[0] || null;
+    if (qc) { fillClassSel(qc.classId); fillCourseSel(qc.classId, qc.id); }
   }
 
   /* ================= publish toggle (edit mode) ================= */
@@ -300,8 +329,8 @@
     var btn = this;
     var errBox = document.getElementById('setErr');
     errBox.hidden = true;
-    if (!selectedClasses().length) {
-      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick at least one class — only its members can see the quiz.</span>';
+    if (!selCourse.value) {
+      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick a course for this quiz — create one inside one of your classes first.</span>';
       errBox.hidden = false;
       return;
     }
@@ -324,7 +353,7 @@
       tabSwitchPolicy: setTab.value,
       opensAt: opensAt,
       closesAt: closesAt,
-      classes: selectedClasses()
+      courseId: selCourse.value || null
     };
     try {
       if (creating) {

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My classes — ClassMark</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body class="app">
+<div id="nav"></div>
+
+<main class="container">
+  <section class="pagehead">
+    <div>
+      <h1>My classes</h1>
+      <p class="sub" id="sub">Loading…</p>
+    </div>
+  </section>
+
+  <section class="card tight" id="newCard">
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:center">
+      <div style="flex:1;min-width:220px">
+        <b style="font-size:15.5px">Create a class</b>
+        <div class="hintline">Each class gets its own unique join code. Students join once and automatically get every course you create in it.</div>
+      </div>
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <input id="clsName" type="text" placeholder="New class name, e.g. JSS 2 Blue" style="min-width:190px">
+        <button class="btn primary" id="clsGo"></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="quizgrid" id="grid">
+    <div class="card skeleton">Loading…</div>
+  </section>
+  <p style="margin:26px 2px 50px"></p>
+</main>
+
+<!-- ============ class settings modal ============ -->
+<div class="overlay" id="clsOverlay" hidden>
+  <div class="modal">
+    <h3>Class settings</h3>
+    <p class="muted small">Pick the class colour and rename it if you like. The colour tints this class's cards for your students.</p>
+    <div class="form-err" id="clsErr" hidden></div>
+    <div class="field">
+      <label for="clsNameInput">Class name</label>
+      <input id="clsNameInput" type="text" placeholder="e.g. JSS 2 Blue">
+    </div>
+    <div class="field">
+      <label>Class colour</label>
+      <div class="swatches" id="swatches"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="clsCancel">Cancel</button>
+      <button type="button" class="btn primary" id="clsSave">Save settings</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+(async function () {
+  var user = await requireLogin('teacher');
+  navbar(user, 'classes');
+  document.getElementById('sub').textContent =
+    'Every class has its own join code — share it once and your students get all its courses automatically.';
+  document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Create class';
+
+  var classes = [];
+  var PALETTE = ['#1a73e8', '#188038', '#12b5cb', '#a142f4', '#ad1457', '#d93025', '#e8710a', '#f9ab00', '#5f6368'];
+  var pickedColor = null, editId = null;
+
+  async function load() {
+    try {
+      var d = await GET('/api/classes/mine');
+      classes = d.classes || [];
+      render();
+    } catch (err) {
+      document.getElementById('grid').innerHTML =
+        '<div class="card"><p class="muted" style="margin:0">Could not load your classes — ' + esc(err.message) + '</p></div>';
+    }
+  }
+
+  function render() {
+    var g = document.getElementById('grid');
+    if (!classes.length) {
+      g.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('bookOpen', 34) + '</div>' +
+        'No classes yet — create your first class above. Your courses and quizzes will live inside it.</div></div>';
+      return;
+    }
+    g.innerHTML = classes.map(card).join('');
+    wire();
+  }
+
+  function card(c) {
+    return '' +
+      '<div class="card hover classcard"' + (c.color ? ' style="--cc:' + esc(c.color) + '"' : '') + '>' +
+      '<div class="row" style="margin-bottom:9px">' +
+      (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span>' : '') +
+      '<span class="chip classchip">' + esc(c.name) + '</span>' +
+      '<span class="spacer"></span>' +
+      '<span class="small muted">' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + ' · ' +
+      c.courseCount + ' course' + (c.courseCount === 1 ? '' : 's') + '</span></div>' +
+      '<div class="codebox" style="margin:2px 0 14px"><span class="code codebig" data-copy="' + esc(c.code) + '" style="font-size:26px;font-weight:700;cursor:pointer" title="Tap to copy the join code">' + esc(c.code) + '</span>' +
+      '<button class="btn sm" data-copy="' + esc(c.code) + '">' + icon('clipboardCheck', 14) + ' Copy</button></div>' +
+      '<div class="hintline" style="margin-bottom:14px">Students enter this code on their dashboard to join the class.</div>' +
+      '<div class="row">' +
+      '<a class="btn sm block" href="class.html?id=' + c.id + '">' + icon('chevronRight', 13) + ' Open class</a>' +
+      '<button class="btn sm block" data-set="' + c.id + '">' + icon('sliders', 13) + ' Settings</button>' +
+      '<button class="btn sm danger block" data-del="' + c.id + '" data-name="' + esc(c.name) + '">' + icon('trash', 13) + ' Delete</button>' +
+      '</div></div>';
+  }
+
+  function wire() {
+    $$('[data-copy]').forEach(function (b) {
+      b.onclick = function () { copyText(b.getAttribute('data-copy'), 'Class code copied'); };
+    });
+    $$('[data-set]').forEach(function (b) {
+      b.onclick = function () {
+        var c = classes.filter(function (x) { return x.id === b.getAttribute('data-set'); })[0];
+        if (!c) return;
+        editId = c.id;
+        pickedColor = c.color || PALETTE[0];
+        document.getElementById('clsNameInput').value = c.name;
+        document.getElementById('clsErr').hidden = true;
+        renderSwatches();
+        document.getElementById('clsOverlay').hidden = false;
+      };
+    });
+    $$('[data-del]').forEach(function (b) {
+      b.onclick = async function () {
+        var name = b.getAttribute('data-name');
+        var c = classes.filter(function (x) { return x.id === b.getAttribute('data-del'); })[0] || {};
+        var ok = await confirmModal({
+          title: 'Delete "' + name + '"?',
+          body: 'The class, its courses and quizzes without attempts are removed. ' +
+            'Quizzes with student attempts must be deleted first so results are not lost.',
+          okText: 'Delete class', danger: true
+        });
+        if (!ok) return;
+        b.disabled = true;
+        try {
+          await DEL('/api/classes/' + c.id);
+          toast('Class deleted');
+          load();
+        } catch (err) { toast(err.message, 'bad'); b.disabled = false; }
+      };
+    });
+  }
+
+  /* ---- create ---- */
+  document.getElementById('clsGo').onclick = async function () {
+    this.disabled = true;
+    try {
+      var r = await POST('/api/classes', { name: document.getElementById('clsName').value });
+      toast('Class created — share code ' + r.class.code + ' with your students');
+      document.getElementById('clsName').value = '';
+      load();
+    } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
+  };
+
+  /* ---- settings modal ---- */
+  var ov = document.getElementById('clsOverlay');
+  document.getElementById('clsCancel').onclick = function () { ov.hidden = true; };
+  ov.onclick = function (e) { if (e.target === ov) ov.hidden = true; };
+  function renderSwatches() {
+    var box = document.getElementById('swatches');
+    box.innerHTML = PALETTE.map(function (col) {
+      return '<button type="button" class="swatch' + (pickedColor === col ? ' on' : '') + '" data-col="' + col + '" style="background:' + col + '" title="' + col + '"></button>';
+    }).join('');
+    $$('[data-col]', box).forEach(function (b) {
+      b.onclick = function () { pickedColor = b.getAttribute('data-col'); renderSwatches(); };
+    });
+  }
+  document.getElementById('clsSave').onclick = async function () {
+    var btn = this;
+    var err = document.getElementById('clsErr');
+    err.hidden = true;
+    btn.disabled = true;
+    try {
+      await PUT('/api/classes/' + editId, {
+        name: document.getElementById('clsNameInput').value,
+        color: pickedColor || '#1a73e8'
+      });
+      toast('Class settings saved');
+      ov.hidden = true;
+      load();
+    } catch (e2) {
+      err.innerHTML = icon('alertCircle', 16) + '<span>' + esc(e2.message) + '</span>';
+      err.hidden = false;
+    }
+    btn.disabled = false;
+  };
+
+  load();
+})().catch(function () {});
+</script>
+</body>
+</html>

@@ -74,10 +74,8 @@
           </div>
           <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
         </div>
-        <div class="field" id="classField" hidden>
-          <label for="rgClass">Course code you teach</label>
-          <input id="rgClass" type="text" placeholder="e.g. CSC 204">
-          <div class="hint">Your course becomes your class, with a unique join code students use to join it.</div>
+        <div class="hint" id="teacherHint" hidden style="margin-top:-6px">
+          As a teacher you get a class automatically — create your courses inside it and share one join code with your students.
         </div>
         <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
       </form>
@@ -123,13 +121,13 @@
     role = 'student';
     this.classList.add('on');
     document.getElementById('roleTeacher').classList.remove('on');
-    document.getElementById('classField').hidden = true;
+    document.getElementById('teacherHint').hidden = true;
   };
   document.getElementById('roleTeacher').onclick = function () {
     role = 'teacher';
     this.classList.add('on');
     document.getElementById('roleStudent').classList.remove('on');
-    document.getElementById('classField').hidden = false;
+    document.getElementById('teacherHint').hidden = false;
   };
 
   function afterAuth(user) {
@@ -162,15 +160,11 @@
     var btn = document.getElementById('rgBtn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
-      if (role === 'teacher' && !document.getElementById('rgClass').value.trim()) {
-        throw new Error('Please enter the course code you teach (e.g. CSC 204).');
-      }
       var r = await POST('/api/auth/register', {
         name: document.getElementById('rgName').value,
         email: document.getElementById('rgEmail').value,
         password: document.getElementById('rgPw').value,
-        role: role,
-        className: role === 'teacher' ? document.getElementById('rgClass').value : ''
+        role: role
       });
       setToken(r.token);
       afterAuth(r.user);

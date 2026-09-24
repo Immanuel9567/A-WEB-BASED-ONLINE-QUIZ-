@@ -153,7 +153,7 @@
     });
   }
 
-  /* ---- my classes (multi) ---- */
+  /* ---- quick settings: create class, manage classes, codes with tap-to-copy ---- */
   var classCard = document.getElementById('classCard');
   async function loadClasses() {
     try {
@@ -162,21 +162,32 @@
       var rows = list.map(function (c) {
         return '<div class="row clsrow" style="margin-bottom:10px">' +
           (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span>' : '') +
-          '<div style="flex:1;min-width:160px"><b>' + esc(c.name) + '</b>' +
-          '<div class="hintline">Code <b class="mono codebig">' + esc(c.code) + '</b> &middot; ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + '</div></div>' +
-          '<button class="btn sm" data-copy="' + esc(c.code) + '">' + icon('clipboardCheck', 13) + ' Copy code</button>' +
-          '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('users', 13) + ' Open</a>' +
+          '<div style="flex:1;min-width:150px"><b>' + esc(c.name) + '</b>' +
+          '<div class="hintline">' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + ' &middot; ' + c.courseCount + ' course' + (c.courseCount === 1 ? '' : 's') + '</div></div>' +
+          '<button class="btn sm" data-copy="' + esc(c.code) + '" title="Tap to copy the join code"><b class="mono codebig">' + esc(c.code) + '</b></button>' +
+          '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('chevronRight', 13) + ' Open</a>' +
           '</div>';
       }).join('');
       classCard.innerHTML =
-        '<div class="row" style="flex-wrap:wrap;align-items:flex-start">' +
-        '<div style="flex:1;min-width:260px">' +
-        (rows || '<p class="small muted" style="margin:0 0 6px">No classes yet — your first class gets a unique join code students use to join.</p>') +
+        '<div class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:12px">' +
+        '<b style="font-size:16.5px">Quick settings</b><span class="spacer"></span>' +
+        '<button class="btn sm primary" id="clsNew">' + icon('plus', 14) + ' Create class</button>' +
+        (list.length > 1 ? '<a class="btn sm" href="classes.html">' + icon('sliders', 14) + ' Manage classes</a>' : '') +
         '</div>' +
-        '<div class="row"><input id="clsName" type="text" placeholder="New class name…" style="min-width:160px">' +
-        '<button class="btn primary" id="clsGo"></button></div>' +
-        '</div>';
-      document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Add class';
+        '<div class="row" id="clsNewRow" hidden style="margin-bottom:12px;gap:10px;flex-wrap:wrap">' +
+        '<input id="clsName" type="text" placeholder="New class name, e.g. JSS 2 Blue" style="flex:1;min-width:170px">' +
+        '<button class="btn primary" id="clsGo"></button>' +
+        '<button class="btn" id="clsCancelNew">Cancel</button>' +
+        '</div>' +
+        '<div class="small muted" style="margin:0 0 10px"><b>My classes</b> — the join code sits next to each class; tap it to copy.</div>' +
+        (rows || '<p class="small muted" style="margin:0">No classes yet — create one above. Students join with its code and automatically get every course you add.</p>');
+      var newRow = document.getElementById('clsNewRow');
+      document.getElementById('clsNew').onclick = function () {
+        newRow.hidden = !newRow.hidden;
+        if (!newRow.hidden) document.getElementById('clsName').focus();
+      };
+      document.getElementById('clsCancelNew').onclick = function () { newRow.hidden = true; };
+      document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Create class';
       document.getElementById('clsGo').onclick = async function () {
         this.disabled = true;
         try {
@@ -186,10 +197,7 @@
         } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
       };
       $$('[data-copy]', classCard).forEach(function (b) {
-        b.onclick = function () {
-          try { navigator.clipboard.writeText(b.getAttribute('data-copy')); toast('Class code copied — ' + b.getAttribute('data-copy')); }
-          catch (e) { toast('Class code: ' + b.getAttribute('data-copy'), 'info'); }
-        };
+        b.onclick = function () { copyText(b.getAttribute('data-copy'), 'Class code copied'); };
       });
     } catch (err) {
       classCard.innerHTML = '<p class="small muted">Could not load classes.</p>';

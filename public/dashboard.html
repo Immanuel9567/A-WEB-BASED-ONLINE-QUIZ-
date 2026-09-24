@@ -147,6 +147,7 @@
     return '' +
       '<div class="card hover classcard"' + (cc ? ' style="--cc:' + esc(cc) + '"' : '') + '>' +
       '<div class="row" style="margin-bottom:9px"><span class="chip">' + icon('fileText', 13) + ' ' + esc(q.subject) + '</span>' +
+      (q.course ? '<span class="chip">' + icon('bookOpen', 13) + ' ' + esc(q.course.name) + '</span>' : '') +
       (cls ? cls.map(function (c) {
         return '<span class="chip classchip">' + (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>';
       }).join('') : '') +

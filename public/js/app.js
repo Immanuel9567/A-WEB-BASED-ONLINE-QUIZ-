@@ -231,6 +231,7 @@
     }
     var links = isTeacher ? [
       item('dashboard', 'teacher.html', 'home', 'Dashboard'),
+      item('classes', 'classes.html', 'bookOpen', 'My classes'),
       item('students', 'students.html', 'users', 'Students'),
       item('create', 'builder.html?new=1', 'plus', 'Create quiz')
     ] : [
@@ -496,6 +497,13 @@
   }
 
   /* ---------------- profile editing modal --------------------------------- */
+  /* tap-to-copy (join codes etc.) — clipboard API with a toast fallback */
+  window.copyText = function (text, label) {
+    var msg = (label ? label + ' — ' : 'Copied — ') + text;
+    try { navigator.clipboard.writeText(text); toast(msg); }
+    catch (e) { toast(msg, 'info'); }
+  };
+
   /* quiz availability window: 'upcoming' | 'open' | 'closed' */
   window.winState = function (q) {
     var t = Date.now();

@@ -16,24 +16,22 @@
       <a class="btn" href="dashboard.html" id="backLink"></a>
       <button class="btn" id="clsSettings" hidden></button>
     </div>
-    <div>
-      <h1 id="cTitle">Class</h1>
-      <p class="sub" id="cMeta">Loading…</p>
-    </div>
-  </section>
-
-  <!-- teacher-owner: join code, always visible -->
-  <section class="card tight" id="codeCard" hidden style="margin-bottom:20px">
-    <div class="row" style="flex-wrap:wrap;align-items:center">
+    <div class="row" style="align-items:flex-end;flex-wrap:wrap;gap:16px">
       <div style="flex:1;min-width:230px">
-        <b style="font-size:15px">Class join code</b>
-        <div class="hintline">Students enter this code on their dashboard to join the class — quizzes set to this class appear for members only.</div>
+        <h1 id="cTitle">Class</h1>
+        <p class="sub" id="cMeta">Loading…</p>
       </div>
-      <div class="codebox"><span class="code" id="cCode"></span><button class="btn sm" id="copyCode"></button></div>
+      <div id="headCode" hidden>
+        <div class="small muted" style="margin-bottom:5px"><b>Class join code</b> — tap to copy</div>
+        <div class="codebox"><span class="code codebig" id="cCode" style="font-size:26px;font-weight:700;cursor:pointer" title="Copy the join code"></span><button class="btn sm" id="copyCode"></button></div>
+      </div>
     </div>
   </section>
 
   <section class="statgrid" id="stats"></section>
+
+  <h2 class="sec" id="crsHead">Courses</h2>
+  <section class="card tight" id="crsCard"><p class="small muted skeleton">Loading…</p></section>
 
   <h2 class="sec" id="quizHead">Class quizzes</h2>
   <section class="quizgrid" id="quizzes">
@@ -73,6 +71,23 @@
     <div class="modal-actions">
       <button type="button" class="btn" id="clsCancel">Cancel</button>
       <button type="button" class="btn primary" id="clsSave">Save settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ course modal (owner) ============ -->
+<div class="overlay" id="crsOverlay" hidden>
+  <div class="modal">
+    <h3>Rename course</h3>
+    <p class="muted small">Courses group the quizzes of one subject inside this class. Students in the class get every course automatically.</p>
+    <div class="form-err" id="crsErr" hidden></div>
+    <div class="field">
+      <label for="crsNameInput">Course name</label>
+      <input id="crsNameInput" type="text" placeholder="e.g. CSC 204">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="crsCancel">Cancel</button>
+      <button type="button" class="btn primary" id="crsSave">Save</button>
     </div>
   </div>
 </div>
@@ -133,11 +148,12 @@
       (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span> ' : '') + esc(c.name);
     document.getElementById('cMeta').textContent =
       'Taught by ' + c.teacherName + ' · ' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') +
+      ' · ' + (d.courses || []).length + ' course' + ((d.courses || []).length === 1 ? '' : 's') +
       ' · ' + d.quizzes.length + ' class quiz' + (d.quizzes.length === 1 ? '' : 'zes');
 
     /* ---- owner extras: code card, settings button, manage students ---- */
     document.getElementById('clsSettings').hidden = !owner;
-    document.getElementById('codeCard').hidden = !owner;
+    document.getElementById('headCode').hidden = !owner;
     if (owner) {
       document.getElementById('cCode').textContent = c.code;
       document.getElementById('memHead').hidden = false;
@@ -186,13 +202,83 @@
       return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
     }
 
-    /* ---- class quizzes (tinted with the class colour) ---- */
+    renderCourses();
+    renderQuizzes();
+  }
+
+  /* ---- courses: everyone filters by tapping; the owner also creates / renames / deletes ---- */
+  var crsFilter = null;
+  function renderCourses() {
+    var el = document.getElementById('crsCard');
+    var list = d.courses || [];
+    var chips = '<button class="chip" data-crs="" style="cursor:pointer">' + icon('fileText', 13) + ' All quizzes</button>' +
+      list.map(function (x) {
+        return '<button class="chip" data-crs="' + esc(x.id) + '" style="cursor:pointer;' + (crsFilter === x.id ? 'font-weight:700;text-decoration:underline' : '') + '">' +
+          icon('bookOpen', 13) + ' ' + esc(x.name) + ' &middot; ' + x.quizCount + '</button>';
+      }).join('');
+    var html = '<div class="row" style="flex-wrap:wrap;gap:8px">' + chips + '</div>';
+    if (owner) {
+      html += '<div class="row" style="margin-top:14px;gap:10px;flex-wrap:wrap">' +
+        '<input id="crsName" type="text" placeholder="New course, e.g. CSC 204" style="flex:1;min-width:180px">' +
+        '<button class="btn primary" id="crsGo"></button></div>';
+      html += list.map(function (x) {
+        return '<div class="row clsrow" style="margin-top:10px;gap:10px">' +
+          '<b style="min-width:150px">' + esc(x.name) + '</b>' +
+          '<span class="small muted">' + x.quizCount + ' quiz' + (x.quizCount === 1 ? '' : 'zes') + '</span><span class="spacer"></span>' +
+          '<button class="btn sm" data-ren="' + esc(x.id) + '" data-name="' + esc(x.name) + '">' + icon('edit', 13) + ' Rename</button>' +
+          '<button class="btn sm danger" data-delc="' + esc(x.id) + '" data-name="' + esc(x.name) + '">' + icon('trash', 13) + '</button>' +
+          '</div>';
+      }).join('');
+    }
+    el.innerHTML = html;
+    if (owner) {
+      document.getElementById('crsGo').innerHTML = icon('plus', 14) + ' Create course';
+      document.getElementById('crsGo').onclick = async function () {
+        this.disabled = true;
+        try {
+          await POST('/api/classes/' + classId + '/courses', { name: document.getElementById('crsName').value });
+          toast('Course created — students in this class get it automatically');
+          await loadClassPage();
+        } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
+      };
+      $$('[data-ren]', el).forEach(function (b) {
+        b.onclick = function () { openCourseModal(b.getAttribute('data-ren'), b.getAttribute('data-name')); };
+      });
+      $$('[data-delc]', el).forEach(function (b) {
+        b.onclick = async function () {
+          var name = b.getAttribute('data-name');
+          var ok = await confirmModal({
+            title: 'Delete "' + name + '"?',
+            body: 'The course is removed from this class. Quizzes still inside it must be deleted or moved first.',
+            okText: 'Delete course', danger: true
+          });
+          if (!ok) return;
+          try { await DEL('/api/courses/' + b.getAttribute('data-delc')); toast('Course deleted'); await loadClassPage(); }
+          catch (err) { toast(err.message, 'bad'); }
+        };
+      });
+    }
+    $$('[data-crs]', el).forEach(function (b) {
+      b.onclick = function () {
+        crsFilter = b.getAttribute('data-crs') || null;
+        renderCourses();
+        renderQuizzes();
+      };
+    });
+  }
+
+  /* ---- quizzes of the class (optionally filtered to one course) ---- */
+  function renderQuizzes() {
     var qEl = document.getElementById('quizzes');
+    var shown = crsFilter ? d.quizzes.filter(function (q) { return q.course && q.course.id === crsFilter; }) : d.quizzes;
     if (!d.quizzes.length) {
       qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-        (owner ? 'No quizzes assigned to this class yet — pick this class under "Visible to" when creating a quiz.' : 'Your teacher has not added class quizzes yet. Check back soon.') + '</div></div>';
+        (owner ? 'No quizzes in this class yet — create a course above, then add quizzes to it from Create quiz.' : 'Your teacher has not added class quizzes yet. Check back soon.') + '</div></div>';
+    } else if (!shown.length) {
+      qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
+        'No quizzes in this course yet.</div></div>';
     } else {
-      qEl.innerHTML = d.quizzes.map(card).join('');
+      qEl.innerHTML = shown.map(card).join('');
       wireStart();
     }
   }
@@ -232,6 +318,7 @@
       '<div class="card hover classcard"' + tint + '>' +
       '<div class="row" style="margin-bottom:9px"><span class="chip">' + icon('fileText', 13) + ' ' + esc(q.subject) + '</span>' +
       '<span class="chip classchip">' + (c && c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>' +
+      (q.course ? '<span class="chip">' + icon('bookOpen', 13) + ' ' + esc(q.course.name) + '</span>' : '') +
       '<span class="spacer"></span>' + outcome + '</div>' +
       '<h3 style="font-size:18.5px">' + esc(q.title) + '</h3>' +
       '<p class="muted small" style="min-height:38px">' + esc(q.description || '') + '</p>' +
@@ -318,9 +405,35 @@
     btn.disabled = false;
   };
 
-  document.getElementById('copyCode').onclick = function () {
-    try { navigator.clipboard.writeText(c.code); toast('Class code copied — ' + c.code); }
-    catch (e) { toast('Class code: ' + c.code, 'info'); }
+  document.getElementById('copyCode').onclick = function () { copyText(c.code, 'Class code copied'); };
+  document.getElementById('cCode').onclick = function () { copyText(c.code, 'Class code copied'); };
+
+  /* ---- course rename modal ---- */
+  var crsOv = document.getElementById('crsOverlay');
+  var crsEditId = null;
+  function openCourseModal(id, name) {
+    crsEditId = id;
+    document.getElementById('crsNameInput').value = name;
+    document.getElementById('crsErr').hidden = true;
+    crsOv.hidden = false;
+  }
+  document.getElementById('crsCancel').onclick = function () { crsOv.hidden = true; };
+  crsOv.onclick = function (e) { if (e.target === crsOv) crsOv.hidden = true; };
+  document.getElementById('crsSave').onclick = async function () {
+    var btn = this;
+    var err = document.getElementById('crsErr');
+    err.hidden = true;
+    btn.disabled = true;
+    try {
+      await PUT('/api/courses/' + crsEditId, { name: document.getElementById('crsNameInput').value });
+      toast('Course renamed');
+      crsOv.hidden = true;
+      await loadClassPage();
+    } catch (e2) {
+      err.innerHTML = icon('alertCircle', 16) + '<span>' + esc(e2.message) + '</span>';
+      err.hidden = false;
+    }
+    btn.disabled = false;
   };
 
   loadClassPage();

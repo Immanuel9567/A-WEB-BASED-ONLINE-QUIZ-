@@ -8,8 +8,9 @@
      • Real-time monitoring of in-progress attempts (lightweight polling)
      • Analytics: score distribution, pass rate and per-question item analysis
    ----------------------------------------------------------------------------
-   Stack: zero-dependency Node.js (built-in http / fs / crypto only).
-   Storage: JSON document store (data/db.json) with atomic writes.
+   Stack: Node.js (built-in http / fs / crypto) + better-sqlite3 for storage.
+   Storage: SQLite database (data/classmark.db), mirrored to JSON (data/db.json)
+            and backed up encrypted to a private cloud git branch.
    ============================================================================ */
 'use strict';
 
@@ -21,6 +22,7 @@ const crypto = require('crypto');
 const PORT          = Number(process.env.PORT || 3000);
 const PUB           = path.join(__dirname, 'public');
 const DB_FILE       = path.join(__dirname, 'data', 'db.json');
+const SQL_FILE      = path.join(__dirname, 'data', 'classmark.db');
 const GRACE_MS      = 15000;                 // network grace window after timer ends
 const SESSION_TTL   = 90 * 24 * 3600 * 1000; // 90 days — persistent logins
 
@@ -41,7 +43,8 @@ function meta(q) { // safe quiz summary (no answers involved)
     durationMin: q.durationMin, passMark: q.passMark, attemptsAllowed: q.attemptsAllowed,
     shuffle: !!q.shuffle, shuffleOptions: !!q.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(q.tabSwitchPolicy) ? q.tabSwitchPolicy : 'warn',
-    published: !!q.published, createdAt: q.createdAt, classes: q.classes || []
+    published: !!q.published, createdAt: q.createdAt, classes: q.classes || [],
+    courseId: q.courseId || null
   };
 }
 function publicQuestion(q) { // what a student may see BEFORE grading
@@ -50,11 +53,76 @@ function publicQuestion(q) { // what a student may see BEFORE grading
 
 /* ------------------------------------------------------------- data & seed  */
 let db;
-let dbSeeded = false; // true when this boot started from the seed (no db.json)
+let dbSeeded = false; // true when this boot started empty (no sqlite store, no JSON file)
+
+/* --- SQLite (primary store). One row per entity; JSON kept for cloud backup + mirror.
+       If better-sqlite3 is ever unavailable the app transparently falls back to the
+       JSON file alone, so the server still boots. --- */
+const SQL_COLLECTIONS = ['users', 'classes', 'courses', 'quizzes', 'attempts', 'notifications'];
+const SQL_MAPS = ['questions', 'sessions'];
+let sql = null;
+
+function sqlOpen() {
+  try {
+    const Database = require('better-sqlite3');
+    fs.mkdirSync(path.dirname(SQL_FILE), { recursive: true });
+    sql = new Database(SQL_FILE);
+    sql.pragma('journal_mode = WAL');
+    sql.pragma('busy_timeout = 3000');
+    sql.exec(
+      'CREATE TABLE IF NOT EXISTS rows (col TEXT NOT NULL, id TEXT NOT NULL, ord INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (col, id));' +
+      'CREATE INDEX IF NOT EXISTS idx_rows_col ON rows (col, ord);' +
+      'CREATE TABLE IF NOT EXISTS maps (col TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY (col, id));' +
+      "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+    );
+    return true;
+  } catch (e) {
+    console.error('sqlite: unavailable, using the JSON store alone -', e.message);
+    sql = null;
+    return false;
+  }
+}
+
+function sqlLoad() { // rebuild the in-memory document from the database
+  const out = { users: [], classes: [], courses: [], quizzes: [], attempts: [], notifications: [], questions: {}, sessions: {}, updatedAt: 0 };
+  if (!sql) return out;
+  for (const col of SQL_COLLECTIONS) {
+    out[col] = sql.prepare('SELECT json FROM rows WHERE col = ? ORDER BY ord').all(col).map((r) => JSON.parse(r.json));
+  }
+  for (const col of SQL_MAPS) {
+    out[col] = {};
+    for (const r of sql.prepare('SELECT id, json FROM maps WHERE col = ?').all(col)) out[col][r.id] = JSON.parse(r.json);
+  }
+  const m = sql.prepare("SELECT value FROM meta WHERE key = 'updatedAt'").get();
+  out.updatedAt = m ? Number(m.value) || 0 : 0;
+  return out;
+}
+
+function sqlSaveAll() { // whole-document rewrite inside one transaction (atomic, small data)
+  const tx = sql.transaction(() => {
+    for (const col of SQL_COLLECTIONS) {
+      sql.prepare('DELETE FROM rows WHERE col = ?').run(col);
+      const ins = sql.prepare('INSERT INTO rows (col, id, ord, json) VALUES (?, ?, ?, ?)');
+      (db[col] || []).forEach((o, i) => { if (o && o.id) ins.run(col, String(o.id), i, JSON.stringify(o)); });
+    }
+    for (const col of SQL_MAPS) {
+      sql.prepare('DELETE FROM maps WHERE col = ?').run(col);
+      const ins = sql.prepare('INSERT INTO maps (col, id, json) VALUES (?, ?, ?)');
+      for (const k of Object.keys(db[col] || {})) ins.run(col, k, JSON.stringify(db[col][k]));
+    }
+    sql.prepare("INSERT INTO meta (key, value) VALUES ('updatedAt', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(String(db.updatedAt || 0));
+  });
+  tx();
+}
 
 function saveDb() {
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
   db.updatedAt = now();
+  if (sql) {
+    try { sqlSaveAll(); } catch (e) { console.error('sqlite: write failed -', e.message); }
+  }
+  // JSON mirror: human-readable copy + the format the encrypted cloud backup uses
+  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
   const tmp = DB_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 1));
   fs.renameSync(tmp, DB_FILE); // atomic replace
@@ -63,19 +131,84 @@ function saveDb() {
 
 function seed() {
   // fresh install: completely empty — the first teacher registers from the login page
-  db = { users: [], quizzes: [], questions: {}, attempts: [], notifications: [], classes: [], sessions: {} };
+  db = { users: [], classes: [], courses: [], quizzes: [], questions: {}, attempts: [], notifications: [], sessions: {} };
 }
 
 function loadDb() {
-  try {
-    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    if (!db || !Array.isArray(db.users)) throw new Error('corrupt');
-  } catch (e) {
-    seed();
-    dbSeeded = true;
+  let fromSql = false;
+  if (sqlOpen()) {
+    db = sqlLoad();
+    const n = db.users.length + db.classes.length + db.quizzes.length + Object.keys(db.sessions).length;
+    if (n > 0) {
+      fromSql = true;
+      console.log('sqlite: loaded ' + SQL_FILE + ' (' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes)');
+    }
   }
+  let imported = false;
+  // first run of the new engine (or a newer JSON file): import it — never wipe data
+  try {
+    const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    if (j && Array.isArray(j.users) && (!fromSql || (j.updatedAt || 0) > (db.updatedAt || 0) + 1000)) {
+      db = j; imported = true;
+      console.log('sqlite: importing the JSON store (' + db.users.length + ' users, ' + (db.quizzes || []).length + ' quizzes) — existing data is migrated, not wiped');
+    }
+  } catch (e) { /* no usable JSON file */ }
+  if (!fromSql && !imported) { seed(); dbSeeded = true; }
   if (!db.notifications) db.notifications = []; // migration for older stores
   if (!db.classes) db.classes = []; // migration for older stores
+  if (!Array.isArray(db.courses)) db.courses = []; // class -> course -> quiz model
+  if (migrateModel() || imported) saveDb(); // persist import + model upgrade into sqlite
+}
+
+/** Upgrade older data to the class -> course -> quiz model. Idempotent — safe on every boot.
+    • every teacher ends up owning at least one class ("My Class")
+    • every quiz ends up inside a course of one of the teacher's classes
+    • legacy quizzes shared across several classes are cloned into the extra classes
+      so nothing a student could see before disappears. */
+function migrateModel() {
+  let changed = false;
+  if (!Array.isArray(db.courses)) { db.courses = []; changed = true; }
+  const findTeacher = (ref) => byId(db.users, ref) || db.users.find((u) => u.email === ref) || null;
+  for (const u of db.users) {
+    if (u.role !== 'teacher') continue;
+    if (!db.classes.some((c) => c.teacherId === u.id)) {
+      db.classes.push({ id: uid('cls'), name: 'My Class', code: genClassCode(), teacherId: u.id, studentIds: [], createdAt: now() });
+      changed = true;
+    }
+  }
+  const courseFor = (classId, name) => {
+    let x = db.courses.find((y) => y.classId === classId && y.name.toLowerCase() === name.toLowerCase());
+    if (!x) { x = { id: uid('crs'), classId, name, createdAt: now() }; db.courses.push(x); changed = true; }
+    return x;
+  };
+  const clones = [];
+  for (const q of db.quizzes) {
+    if (q.courseId && byId(db.courses, q.courseId)) continue; // already migrated
+    const teacher = findTeacher(q.createdBy);
+    let targets = (q.classes || []).filter((id) => byId(db.classes, id));
+    if (!targets.length) {
+      const own = teacher ? db.classes.filter((c) => c.teacherId === teacher.id) : [];
+      if (own.length) targets = [own[0].id];
+    }
+    if (!targets.length) continue; // orphan with no resolvable owner — leave untouched
+    const name = String(q.subject || '').trim() || 'General';
+    q.courseId = courseFor(targets[0], name).id;
+    q.classes = [targets[0]];
+    changed = true;
+    for (let i = 1; i < targets.length; i++) {
+      const clone = JSON.parse(JSON.stringify(q));
+      clone.id = uid('qz');
+      clone.createdAt = now();
+      clone.courseId = courseFor(targets[i], name).id;
+      clone.classes = [targets[i]];
+      clones.push({ clone, from: q.id });
+    }
+  }
+  for (const { clone, from } of clones) {
+    db.quizzes.push(clone);
+    db.questions[clone.id] = (db.questions[from] || []).map((x) => JSON.parse(JSON.stringify(x)));
+  }
+  return changed || clones.length > 0;
 }
 
 /* -------------------------------------------------------- grading engine    */
@@ -219,7 +352,9 @@ function classPublic(c) {
   return c && {
     id: c.id, name: c.name, code: c.code, color: c.color || null,
     teacherId: c.teacherId, teacherName: t ? t.name : 'Teacher',
-    memberCount: (c.studentIds || []).length, createdAt: c.createdAt
+    memberCount: (c.studentIds || []).length,
+    courseCount: db.courses.filter((x) => x.classId === c.id).length,
+    createdAt: c.createdAt
   };
 }
 function genClassCode() {
@@ -233,18 +368,27 @@ function genClassCode() {
 function myClassIds(u) {
   return db.classes.filter((c) => (c.studentIds || []).includes(u.id)).map((c) => c.id);
 }
+function quizClassIds(q) { // a quiz lives in ONE course; the course lives in ONE class
+  const crs = byId(db.courses, q.courseId);
+  if (crs && byId(db.classes, crs.classId)) return [crs.classId];
+  return (q.classes || []).filter((id) => byId(db.classes, id)); // legacy fallback
+}
 function canSeeQuiz(u, q) {
   if (!u || u.role === 'teacher') return true;
-  return (q.classes || []).some((id) => myClassIds(u).includes(id)); // class members only — never public
+  return quizClassIds(q).some((id) => myClassIds(u).includes(id)); // class members only — never public
 }
-function sanitizeClasses(list, teacher) {
-  if (!Array.isArray(list)) return [];
-  const mine = db.classes.filter((c) => c.teacherId === teacher.id).map((c) => c.id);
-  return [...new Set(list)].filter((id) => mine.includes(id));
+function ownsQuiz(u, q) { // quizzes are private to the teacher that created them
+  return !!q && (q.createdBy === u.id || q.createdBy === u.email);
 }
-function notifyQuizPublished(quiz, teacher) { // members of the quiz's classes only
+function resolveCourse(courseId, teacher) { // the course's class must belong to this teacher
+  const crs = byId(db.courses, courseId);
+  if (!crs) return null;
+  const cls = byId(db.classes, crs.classId);
+  return (cls && cls.teacherId === teacher.id) ? crs : null;
+}
+function notifyQuizPublished(quiz, teacher) { // members of the quiz's class only
   const ids = new Set();
-  for (const cid of (quiz.classes || [])) {
+  for (const cid of quizClassIds(quiz)) {
     const c = byId(db.classes, cid);
     if (c) (c.studentIds || []).forEach((sid) => ids.add(sid));
   }
@@ -290,9 +434,11 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   const salt = crypto.randomBytes(8).toString('hex');
   const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: now() };
   db.users.push(user);
-  if (role === 'teacher' && String(body.className || '').trim().length >= 2) {
+  if (role === 'teacher') {
+    // every teacher owns a class from the very first login — students join once with
+    // this code and automatically get every course the teacher creates in the class
     db.classes.push({
-      id: uid('cls'), name: String(body.className).trim(), code: genClassCode(),
+      id: uid('cls'), name: 'My Class', code: genClassCode(),
       teacherId: user.id, studentIds: [], createdAt: now()
     });
   }
@@ -337,7 +483,8 @@ route('GET', '/api/users', async ({ user, res }) => {
 
 /* ======== QUIZZES ======== */
 function quizFor(q, user) { // meta + counters, personalised for the viewer
-  const classInfo = (q.classes || [])
+  const crs = byId(db.courses, q.courseId);
+  const classInfo = quizClassIds(q)
     .map((id) => byId(db.classes, id))
     .filter(Boolean)
     .map((c) => ({ id: c.id, name: c.name, color: c.color || null }));
@@ -350,6 +497,7 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
   const inprog = mine.find((a) => a.status === 'in_progress');
   return Object.assign(meta(q), {
     opensAt: q.opensAt || null, closesAt: q.closesAt || null,
+    course: crs ? { id: crs.id, name: crs.name } : null,
     classInfo,
     questionCount: live.length,
     draftCount: qs.length - live.length,
@@ -370,8 +518,12 @@ route('GET', '/api/quizzes', async ({ user, res }) => {
   expireStale();
   const out = [];
   for (const q of db.quizzes) {
-    if (user.role !== 'teacher' && !q.published) continue;
-    if (user.role !== 'teacher' && !canSeeQuiz(user, q)) continue; // class-scoped quiz
+    if (user.role === 'teacher') {
+      if (!ownsQuiz(user, q)) continue; // a teacher sees only the quizzes they created
+    } else {
+      if (!q.published) continue;
+      if (!canSeeQuiz(user, q)) continue; // class-scoped quiz
+    }
     out.push(quizFor(q, user));
   }
   out.sort((a, b) => b.createdAt - a.createdAt);
@@ -407,9 +559,9 @@ route('POST', '/api/quizzes', async ({ user, body, res }) => {
   if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
   const v = validQuizBody(body);
   if (v.error) return send(res, 400, { error: v.error });
-  const quiz = Object.assign({ id: uid('qz'), createdAt: now(), createdBy: user.id }, v);
-  quiz.classes = sanitizeClasses(body.classes, user);
-  if (!quiz.classes.length) return send(res, 400, { error: 'Pick at least one class — only its members can see the quiz.' });
+  const course = resolveCourse(body.courseId, user);
+  if (!course) return send(res, 400, { error: 'Pick a course for this quiz — create one inside one of your classes first.' });
+  const quiz = Object.assign({ id: uid('qz'), createdAt: now(), createdBy: user.id, courseId: course.id, classes: [course.classId] }, v);
   db.quizzes.push(quiz);
   db.questions[quiz.id] = [];
   if (quiz.published) notifyQuizPublished(quiz, user);
@@ -421,6 +573,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/questions', async ({ user, params, re
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   send(res, 200, { quiz: meta(quiz), questions: db.questions[quiz.id] || [] });
 });
 
@@ -428,6 +581,7 @@ route('POST', '/api/quizzes/([A-Za-z0-9_]+)/questions', async ({ user, params, b
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const v = validQuestion(body);
   if (v.error) return send(res, 400, { error: v.error });
   db.questions[quiz.id] = db.questions[quiz.id] || [];
@@ -518,12 +672,19 @@ route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res })
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const v = validQuizBody(Object.assign({}, quiz, body));
   if (v.error) return send(res, 400, { error: v.error });
-  const nextClasses = body.classes !== undefined ? sanitizeClasses(body.classes, user) : (quiz.classes || []);
-  if (!nextClasses.length) return send(res, 400, { error: 'Pick at least one class — only its members can see the quiz.' });
+  let nextCourseId = quiz.courseId || null, nextClasses = quizClassIds(quiz);
+  if (body.courseId !== undefined) {
+    const course = resolveCourse(body.courseId, user);
+    if (!course) return send(res, 400, { error: 'Pick a course for this quiz — create one inside one of your classes first.' });
+    nextCourseId = course.id;
+    nextClasses = [course.classId];
+  }
   const wasPublished = quiz.published;
   Object.assign(quiz, v);
+  quiz.courseId = nextCourseId;
   quiz.classes = nextClasses;
   if (!wasPublished && quiz.published) notifyQuizPublished(quiz, user);
   saveDb();
@@ -534,6 +695,7 @@ route('DELETE', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, res }) =>
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   const i = db.quizzes.findIndex((q) => q.id === params[0]);
   if (i < 0) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, db.quizzes[i])) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const id = db.quizzes[i].id;
   db.quizzes.splice(i, 1);
   delete db.questions[id];
@@ -769,6 +931,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/attempts', async ({ user, params, res
   expireStale();
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const rows = db.attempts
     .filter((a) => a.quizId === quiz.id && a.status !== 'in_progress')
     .map((a) => ({
@@ -785,6 +948,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
   expireStale();
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const qs = (db.questions[quiz.id] || []).filter((q) => !q.draft);
   const done = db.attempts.filter((a) => a.quizId === quiz.id && a.status !== 'in_progress');
 
@@ -918,8 +1082,10 @@ function applyDbData(b) { // swap in a validated database (sessions handled by c
     attempts: b.attempts,
     notifications: Array.isArray(b.notifications) ? b.notifications : [],
     classes: Array.isArray(b.classes) ? b.classes : [],
+    courses: Array.isArray(b.courses) ? b.courses : [],
     sessions: (b.sessions && typeof b.sessions === 'object' && !Array.isArray(b.sessions)) ? b.sessions : {}
   };
+  migrateModel(); // older cloud backups predate courses — upgrade in place
 }
 
 /* ======== NOTIFICATIONS (teacher) ======== */
@@ -1045,7 +1211,7 @@ route('POST', '/api/classes/join', async ({ user, body, res }) => {
   // welcome alerts: quizzes already published in this class, so a late joiner misses nothing
   const teacher = byId(db.users, c.teacherId);
   for (const q of db.quizzes) {
-    if (q.published && (q.classes || []).includes(c.id)) {
+    if (q.published && quizClassIds(q).includes(c.id)) {
       db.notifications.push({
         id: uid('n'), userId: user.id, quizId: q.id, quizTitle: q.title,
         type: 'published', teacherName: teacher ? teacher.name : 'Your teacher',
@@ -1065,11 +1231,15 @@ route('GET', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
   const isMember = (c.studentIds || []).includes(user.id);
   if (!isOwner && !isMember) return send(res, 403, { error: 'You are not a member of this class.' });
   const quizzes = db.quizzes
-    .filter((q) => (q.classes || []).includes(c.id))
+    .filter((q) => quizClassIds(q).includes(c.id))
     .filter((q) => isOwner || (q.published && canSeeQuiz(user, q)))
     .map((q) => quizFor(q, user))
     .sort((a, b) => b.createdAt - a.createdAt);
-  const out = { class: classPublic(c), quizzes };
+  const courses = db.courses
+    .filter((x) => x.classId === c.id)
+    .map((x) => coursePublic(x))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const out = { class: classPublic(c), quizzes, courses };
   if (isOwner) {
     out.members = (c.studentIds || [])
       .map((sid) => byId(db.users, sid))
@@ -1112,6 +1282,78 @@ route('POST', '/api/classes/([A-Za-z0-9_]+)/kick', async ({ user, params, body, 
   c.studentIds = c.studentIds.filter((x) => x !== sid);
   saveDb();
   send(res, 200, { ok: true, memberCount: c.studentIds.length });
+});
+
+/* ======== COURSES (a course lives in one class; quizzes live in a course) ======== */
+function coursePublic(x) {
+  return x && {
+    id: x.id, name: x.name, classId: x.classId, createdAt: x.createdAt,
+    quizCount: db.quizzes.filter((q) => q.courseId === x.id).length
+  };
+}
+route('GET', '/api/courses/mine', async ({ user, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const mine = new Set(db.classes.filter((c) => c.teacherId === user.id).map((c) => c.id));
+  const courses = db.courses.filter((x) => mine.has(x.classId)).map(coursePublic);
+  send(res, 200, { courses });
+});
+route('POST', '/api/classes/([A-Za-z0-9_]+)/courses', async ({ user, params, body, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const c = byId(db.classes, params[0]);
+  if (!c) return send(res, 404, { error: 'Class not found.' });
+  if (c.teacherId !== user.id) return send(res, 403, { error: 'This class belongs to another teacher.' });
+  const name = String(body.name || '').trim();
+  if (name.length < 2) return send(res, 400, { error: 'Course name must be at least 2 characters.' });
+  if (db.courses.filter((x) => x.classId === c.id).length >= 24) {
+    return send(res, 400, { error: 'Course limit reached for this class (24).' });
+  }
+  const x = { id: uid('crs'), classId: c.id, name, createdAt: now() };
+  db.courses.push(x);
+  saveDb();
+  send(res, 201, { course: coursePublic(x) });
+});
+route('PUT', '/api/courses/([A-Za-z0-9_]+)', async ({ user, params, body, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const x = byId(db.courses, params[0]);
+  if (!x) return send(res, 404, { error: 'Course not found.' });
+  const c = byId(db.classes, x.classId);
+  if (!c || c.teacherId !== user.id) return send(res, 403, { error: 'This course belongs to another teacher.' });
+  if (body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (name.length < 2) return send(res, 400, { error: 'Course name must be at least 2 characters.' });
+    x.name = name;
+  }
+  saveDb();
+  send(res, 200, { course: coursePublic(x) });
+});
+route('DELETE', '/api/courses/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const x = byId(db.courses, params[0]);
+  if (!x) return send(res, 404, { error: 'Course not found.' });
+  const c = byId(db.classes, x.classId);
+  if (!c || c.teacherId !== user.id) return send(res, 403, { error: 'This course belongs to another teacher.' });
+  const n = db.quizzes.filter((q) => q.courseId === x.id).length;
+  if (n) return send(res, 400, { error: 'This course still has ' + n + ' quiz' + (n === 1 ? '' : 'zes') + ' — delete or move them first.' });
+  db.courses = db.courses.filter((y) => y.id !== x.id);
+  saveDb();
+  send(res, 200, { ok: true });
+});
+route('DELETE', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  const c = byId(db.classes, params[0]);
+  if (!c) return send(res, 404, { error: 'Class not found.' });
+  if (c.teacherId !== user.id) return send(res, 403, { error: 'This class belongs to another teacher.' });
+  const inClass = db.quizzes.filter((q) => quizClassIds(q).includes(c.id));
+  const withAttempts = inClass.filter((q) => db.attempts.some((a) => a.quizId === q.id));
+  if (withAttempts.length) {
+    return send(res, 400, { error: withAttempts.length + ' quiz' + (withAttempts.length === 1 ? ' has' : 'zes have') + ' student attempts — delete those quizzes first so results are not lost.' });
+  }
+  for (const q of inClass) delete db.questions[q.id];
+  db.quizzes = db.quizzes.filter((q) => !inClass.includes(q));
+  db.courses = db.courses.filter((x) => x.classId !== c.id);
+  db.classes = db.classes.filter((x) => x.id !== c.id);
+  saveDb();
+  send(res, 200, { ok: true });
 });
 
 /* ======== CLOUD SAVE (encrypted GitHub branch) ======== */
