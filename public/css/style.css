@@ -113,6 +113,7 @@ body.app { padding-left: var(--sbw); min-height: 100vh; }
 .btn.ghost:hover { background: #f1f3f4; box-shadow: none; }
 .btn.sm { padding: 6px 12px; font-size: 13.5px; border-radius: 7px; gap: 6px; }
 .btn.block { width: 100%; }
+.row.btnrow > .btn { flex: 1 1 auto; min-width: 0; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 .iconbtn {
   width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent;

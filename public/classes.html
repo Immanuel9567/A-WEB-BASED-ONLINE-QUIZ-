@@ -102,10 +102,10 @@
       c.courseCount + ' course' + (c.courseCount === 1 ? '' : 's') + '</span></div>' +
       '<div class="codebox" style="margin:2px 0 14px"><span class="code codebig" data-copy="' + esc(c.code) + '" style="font-size:26px;font-weight:700;cursor:pointer" title="Tap to copy the join code">' + esc(c.code) + '</span>' +
       '<button class="btn sm" data-copy="' + esc(c.code) + '">' + icon('clipboardCheck', 14) + ' Copy</button></div>' +
-      '<div class="row">' +
-      '<a class="btn sm block" href="class.html?id=' + c.id + '">' + icon('chevronRight', 13) + ' Open class</a>' +
-      '<button class="btn sm block" data-set="' + c.id + '">' + icon('sliders', 13) + ' Settings</button>' +
-      '<button class="btn sm danger block" data-del="' + c.id + '" data-name="' + esc(c.name) + '">' + icon('trash', 13) + ' Delete</button>' +
+      '<div class="row btnrow">' +
+      '<a class="btn sm" href="class.html?id=' + c.id + '">' + icon('chevronRight', 13) + ' Open class</a>' +
+      '<button class="btn sm" data-set="' + c.id + '">' + icon('sliders', 13) + ' Settings</button>' +
+      '<button class="btn sm danger" data-del="' + c.id + '" data-name="' + esc(c.name) + '">' + icon('trash', 13) + ' Delete</button>' +
       '</div></div>';
   }
 

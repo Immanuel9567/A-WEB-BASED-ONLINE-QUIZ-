@@ -285,9 +285,9 @@
     var actions = '';
     var win = winState(q);
     if (owner) {
-      actions = '<div class="row">' +
-        '<a class="btn sm block" href="builder.html?id=' + q.id + '">' + icon('edit', 13) + ' Questions</a>' +
-        '<a class="btn sm primary block" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' Insights</a></div>' +
+      actions = '<div class="row btnrow">' +
+        '<a class="btn sm" href="builder.html?id=' + q.id + '">' + icon('edit', 13) + ' Questions</a>' +
+        '<a class="btn sm primary" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' Insights</a></div>' +
         (q.opensAt || q.closesAt ? '<div class="row small muted" style="margin-top:8px">' + icon('timer', 14) + ' ' +
           (win === 'upcoming' ? 'opens ' + fmtWhen(q.opensAt) : win === 'closed' ? 'closed ' + fmtWhen(q.closesAt) : 'closes ' + fmtWhen(q.closesAt)) + '</div>' : '');
     } else if (q.inProgressAttemptId) {
