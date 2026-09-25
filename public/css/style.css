@@ -248,6 +248,22 @@ input[type=text], input[type=email], input[type=password], input[type=number], s
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,.18);
 }
+
+/* dropdowns — same treatment as the other controls: custom chevron,
+   hover fill + border, blue chevron and focus ring when active */
+select {
+  -webkit-appearance: none; appearance: none;
+  padding-right: 40px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 13px center; background-size: 15px;
+}
+select:hover { background-color: #f8f9fa; border-color: #c4c7cb; box-shadow: 0 1px 3px rgba(32,33,36,.12); }
+select:focus {
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a73e8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+select:disabled { background-color: #f1f3f4; color: #9aa0a6; cursor: not-allowed; }
+select option { color: #202124; background: #fff; }
 textarea { resize: vertical; min-height: 74px; }
 .formrow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 620px) { .formrow { grid-template-columns: 1fr; } }
