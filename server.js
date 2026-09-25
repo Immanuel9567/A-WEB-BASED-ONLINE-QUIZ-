@@ -1075,6 +1075,25 @@ function applyDbData(b) { // swap in a validated database (sessions handled by c
 route('GET', '/api/notifications', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   expireStale();
+  // a notification stays valid only while its quiz is still visible to the recipient:
+  // students — a published quiz in a class they currently belong to;
+  // teachers — a quiz they own. Rows that no longer qualify (created before this rule,
+  // or left behind by a kick, an unpublish or a delete) are pruned for good on read.
+  const stillValid = (n) => {
+    const q = byId(db.quizzes, n.quizId);
+    if (!q) return false;
+    if (isTeacher(user)) return ownsQuiz(user, q);
+    return q.published && quizClassIds(q).some((cid) => myClassIds(user).includes(cid));
+  };
+  let pruned = false;
+  for (let i = db.notifications.length - 1; i >= 0; i--) {
+    const n = db.notifications[i];
+    if (n.userId === user.id && !stillValid(n)) {
+      db.notifications.splice(i, 1);
+      pruned = true;
+    }
+  }
+  if (pruned) saveDb();
   const mine = db.notifications
     .filter((n) => n.userId === user.id)
     .sort((x, y) => y.createdAt - x.createdAt);

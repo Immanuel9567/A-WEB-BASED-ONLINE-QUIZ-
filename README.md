@@ -137,7 +137,9 @@ restore, joining a class — also update the screen in place.
   anything that happened since your last visit pops up when you come back, so submissions
   are never missed. Sound can be muted from the bell panel.
 - **Student notifications** — students get a bell notification the moment a teacher
-  publishes a new quiz.
+  publishes a new quiz — but only from the teachers of the classes they belong to, never
+  from anyone else's classes. If they leave (or are removed from) a class, or the quiz is
+  unpublished or deleted, its notifications disappear from their bell automatically.
 - **Live monitor** — who is writing, progress, time left and scores as they land
   (2-second polling), plus students who haven't started.
 - **Analytics** — average/highest/lowest, pass rate, score distribution, per-question item
@@ -193,7 +195,7 @@ restore, joining a class — also update the screen in place.
 | `quizzes` | id, title, subject, description, durationMin, passMark, attemptsAllowed, shuffle, shuffleOptions, tabSwitchPolicy (`off`/`warn`/`autosubmit`), published, createdAt, createdBy |
 | `questions` | keyed by quizId → array of {id, type, text, options[], answer, points, explanation, draft} |
 | `attempts` | id, quizId, userId, startedAt, endsAt, status (`in_progress`/`submitted`/`expired`), answers{}, tabSwitches, autoSubmittedReason, questionOrder[], optionOrder{}, score, maxScore, percent, passed, durationUsedSec, review[] |
-| `notifications` | id, userId (teacher), quizId, quizTitle, attemptId, studentName, type (`submitted`/`expired`/`tabswitch`), percent, passed, createdAt, read |
+| `notifications` | id, userId (recipient), quizId, quizTitle, attemptId, studentName, type (`published` for students · `submitted`/`expired`/`tabswitch` for teachers), percent, passed, createdAt, read |
 | `sessions` | token → {userId, createdAt} |
 
 ---
@@ -242,10 +244,9 @@ restore, joining a class — also update the screen in place.
 | `PUT /api/auth/profile` | any user | Update own name / email / password (needs current password) |
 | `GET /api/students` | teacher | Students enrolled in the teacher's classes (stats scoped to the teacher's quizzes) |
 | `GET /api/students/:id/history` | teacher | One student's full attempt history |
-| `GET /api/notifications` | teacher | Notifications grouped by quiz + unread count |
-| `POST /api/notifications/read` | teacher | Mark one / all as read |
-| `DELETE /api/notifications` | teacher | Clear all notifications |
-| `GET /api/students` | teacher | All students with stats + their classes (sortable, filterable) |
+| `GET /api/notifications` | any user | Own notifications only, grouped by quiz + unread count (stale rows pruned) |
+| `POST /api/notifications/read` | any user | Mark one / all as read |
+| `DELETE /api/notifications` | any user | Clear own notifications |
 
 ### Grading rules
 - **Single choice / True-False** — exact match → full points, else 0.
