@@ -212,8 +212,8 @@ body.app { padding-left: var(--sbw); min-height: 100vh; }
 .stat { background: #fff; border: 1px solid #e8eaed; border-left: 4px solid #dadce0; border-radius: 10px; padding: 16px 18px; }
 .stat .num { font-size: 26px; font-weight: 800; letter-spacing: -.5px; }
 .stat .lbl { font-size: 12.5px; color: #51555a; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
-.stat.accent { border-left-color: #1a73e8; }
-.stat.accent .num { color: #1a73e8; }
+.stat.accent { border-left-color: var(--cc, #1a73e8); }
+.stat.accent .num { color: var(--cc, #1a73e8); }
 a.stat:hover { border-color: #c4c7cb; box-shadow: 0 2px 8px -2px rgba(32,33,36,.15); }
 
 /* grids */

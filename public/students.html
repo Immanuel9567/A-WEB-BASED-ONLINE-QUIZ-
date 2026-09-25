@@ -143,15 +143,15 @@
       ? cls.name + ' — ' + list.length + ' student' + (list.length === 1 ? '' : 's')
       : 'My students';
 
-    var withAttempts = list.filter(function (s) { return s.attempts > 0; }).length;
     var writing = list.filter(function (s) { return s.inProgress; }).length;
     var avgs = list.filter(function (s) { return s.avgPercent != null; }).map(function (s) { return s.avgPercent; });
     var avg = avgs.length ? Math.round(avgs.reduce(function (a, b) { return a + b; }, 0) / avgs.length * 10) / 10 : null;
-    document.getElementById('stats').innerHTML =
-      stat(list.length, cls ? 'In ' + cls.name : 'Students shown') +
-      stat(withAttempts, 'Taken at least one quiz') +
-      stat(writing, 'Writing right now', writing > 0) +
-      stat(fmtPct(avg), cls ? cls.name + ' average' : 'Average score', true);
+    var stBox = document.getElementById('stats');
+    stBox.style.setProperty('--cc', cls && cls.color ? cls.color : '');
+    stBox.innerHTML =
+      stat(list.length, 'Students enrolled', !!cls) +
+      stat(writing, 'Writing right now', !!cls) +
+      stat(fmtPct(avg), cls ? cls.name + ' average' : 'Average score', !!cls);
 
     var tb = document.getElementById('rows');
     if (!students.length) {
