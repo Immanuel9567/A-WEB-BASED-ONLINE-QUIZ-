@@ -68,8 +68,10 @@ create your courses and quizzes inside it, and let students register and join wi
 **Navigation & roster (teacher)**
 - **Sidebar navigation** on every app screen for quick access (collapses to a top bar on phones).
 - **Full-width desktop layout** — the workspace uses the whole screen on large monitors.
-- **Enrolled students list** — every registered student with joined date, quizzes taken,
-  attempts, average, best score and last activity; exportable as CSV.
+- **Students list — scoped to your classes** — only students enrolled in the teacher's
+  own classes appear (never the whole system), with joined date, quizzes taken, attempts,
+  average, best score and last activity — computed from that teacher's quizzes only —
+  plus a per-class filter and CSV export.
 - **Per-student quiz history** — click any student to see their full attempt history with
   scores, outcomes, timing and integrity flags, and jump straight to each result review.
 
@@ -204,7 +206,6 @@ restore, joining a class — also update the screen in place.
 | `POST /api/auth/login` | — | Sign in → token |
 | `POST /api/auth/logout` | user | Invalidate session |
 | `GET /api/auth/me` | user | Current identity |
-| `GET /api/users` | teacher | List users |
 | `GET /api/quizzes` | user | Role-aware quiz list with attempt stats + draft counts |
 | `POST /api/quizzes` | teacher | Create quiz (incl. security kit fields) |
 | `GET /api/quizzes/:id` | user | Quiz detail (answers included for teachers only) |
@@ -239,10 +240,8 @@ restore, joining a class — also update the screen in place.
 | `POST /api/admin/cloud/save` | teacher | Push the database to the cloud now |
 | `POST /api/admin/cloud/restore` | teacher | Pull the cloud copy back into the server |
 | `PUT /api/auth/profile` | any user | Update own name / email / password (needs current password) |
-| `GET /api/students` | teacher | Enrolled students with aggregate stats |
+| `GET /api/students` | teacher | Students enrolled in the teacher's classes (stats scoped to the teacher's quizzes) |
 | `GET /api/students/:id/history` | teacher | One student's full attempt history |
-| `GET /api/admin/export` | teacher | Download full database (backup) |
-| `POST /api/admin/import` | teacher | Restore database from a backup |
 | `GET /api/notifications` | teacher | Notifications grouped by quiz + unread count |
 | `POST /api/notifications/read` | teacher | Mark one / all as read |
 | `DELETE /api/notifications` | teacher | Clear all notifications |

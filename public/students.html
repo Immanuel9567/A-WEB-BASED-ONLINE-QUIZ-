@@ -141,7 +141,7 @@
 
     document.getElementById('listHead').textContent = cls
       ? cls.name + ' — ' + list.length + ' student' + (list.length === 1 ? '' : 's')
-      : 'All students';
+      : 'My students';
 
     var withAttempts = list.filter(function (s) { return s.attempts > 0; }).length;
     var writing = list.filter(function (s) { return s.inProgress; }).length;
@@ -156,7 +156,7 @@
     var tb = document.getElementById('rows');
     if (!students.length) {
       tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('users', 34) + '</div>' +
-        'No students enrolled yet — students can register from the sign-in page.</div></td></tr>';
+        'No students in your classes yet — share a class join code and they appear here the moment they join.</div></td></tr>';
       return;
     }
     if (!list.length) {
@@ -194,10 +194,10 @@
     classes = r[1].classes || [];
 
     document.getElementById('sub').textContent =
-      students.length + ' student' + (students.length === 1 ? '' : 's') + ' registered on the system';
+      students.length + ' student' + (students.length === 1 ? '' : 's') + ' enrolled in your classes';
 
     var sel = document.getElementById('classFilter');
-    sel.innerHTML = '<option value="">All classes</option>' + classes.map(function (c) {
+    sel.innerHTML = '<option value="">All my classes</option>' + classes.map(function (c) {
       return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
     }).join('');
     sel.onchange = function () { filterClass = sel.value; renderList(); };

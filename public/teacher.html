@@ -46,9 +46,9 @@
 
   /* ---- stats + table re-render in place after every change — no page refresh ---- */
   async function refresh() {
-    var results = await Promise.all([GET('/api/quizzes'), GET('/api/users')]);
+    var results = await Promise.all([GET('/api/quizzes'), GET('/api/students')]);
     quizzes = results[0].quizzes;
-    students = results[1].users.filter(function (u) { return u.role === 'student'; });
+    students = results[1].students; // only students enrolled in my classes
     renderStats();
     renderTable();
   }
@@ -60,7 +60,7 @@
       : null;
     document.getElementById('stats').innerHTML =
       st(quizzes.length, 'Quizzes created') +
-      stLink(students.length, 'Enrolled students', 'students.html', 'View list') +
+      stLink(students.length, 'My students', 'students.html', 'View list') +
       st(totalAttempts, 'Attempts (incl. live)') +
       st(fmtPct(overallAvg), 'Average score', true);
   }

@@ -400,8 +400,12 @@ function notifyQuizPublished(quiz, teacher) { // members of the quiz's class onl
     });
   }
 }
-function studentStat(u) { // aggregate performance for one student
-  const atts = db.attempts.filter((a) => a.userId === u.id);
+function studentStat(u, teacher) { // aggregate performance for one student across THIS teacher's quizzes
+  const atts = db.attempts.filter((a) => {
+    if (a.userId !== u.id) return false;
+    const q = byId(db.quizzes, a.quizId);
+    return q && (!teacher || ownsQuiz(teacher, q));
+  });
   const done = atts.filter((a) => a.status !== 'in_progress');
   const last = done.length ? Math.max(...done.map((a) => a.submittedAt || a.startedAt)) : null;
   return {
@@ -475,12 +479,6 @@ route('GET', '/api/auth/me', async ({ user, res }) => {
 });
 
 /* ======== USERS (teacher) ======== */
-route('GET', '/api/users', async ({ user, res }) => {
-  if (!user) return send(res, 401, { error: 'Sign in required.' });
-  if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
-  send(res, 200, { users: db.users.map(publicUser) });
-});
-
 /* ======== QUIZZES ======== */
 function quizFor(q, user) { // meta + counters, personalised for the viewer
   const crs = byId(db.courses, q.courseId);
@@ -1009,23 +1007,27 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
 route('GET', '/api/students', async ({ user, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   expireStale();
+  // a teacher only ever sees students enrolled in THEIR classes — never the whole system,
+  // and the stats cover only this teacher's own quizzes
+  const myClasses = db.classes.filter((c) => c.teacherId === user.id);
+  const myStudentIds = new Set();
+  for (const c of myClasses) (c.studentIds || []).forEach((sid) => myStudentIds.add(sid));
+  const myQuizIds = new Set(db.quizzes.filter((q) => ownsQuiz(user, q)).map((q) => q.id));
   const students = db.users
-    .filter((u) => u.role === 'student')
+    .filter((u) => u.role === 'student' && myStudentIds.has(u.id))
     .map((u) => {
-      const mine = db.attempts.filter((a) => a.userId === u.id && a.status !== 'in_progress');
+      const mine = db.attempts.filter((a) => a.userId === u.id && a.status !== 'in_progress' && myQuizIds.has(a.quizId));
       const quizIds = [...new Set(mine.map((a) => a.quizId))];
-      let sumBest = 0;
-      for (const qid of quizIds) sumBest += Math.max(...mine.filter((a) => a.quizId === qid).map((a) => a.percent));
       return {
         id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
-        classes: db.classes
+        classes: myClasses
           .filter((c) => (c.studentIds || []).includes(u.id))
           .map((c) => ({ id: c.id, name: c.name, color: c.color || null })),
         attempts: mine.length, quizzesTaken: quizIds.length,
         avgPercent: mine.length ? Math.round(mine.reduce((s2, a) => s2 + a.percent, 0) / mine.length * 10) / 10 : null,
         bestPercent: mine.length ? Math.max(...mine.map((a) => a.percent)) : null,
         lastActivity: mine.length ? Math.max(...mine.map((a) => a.submittedAt || a.startedAt)) : null,
-        inProgress: db.attempts.some((a) => a.userId === u.id && a.status === 'in_progress')
+        inProgress: db.attempts.some((a) => a.userId === u.id && a.status === 'in_progress' && myQuizIds.has(a.quizId))
       };
     })
     .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0) || a.name.localeCompare(b.name));
@@ -1037,8 +1039,13 @@ route('GET', '/api/students/([A-Za-z0-9_]+)/history', async ({ user, params, res
   expireStale();
   const stu = byId(db.users, params[0]);
   if (!stu || stu.role !== 'student') return send(res, 404, { error: 'Student not found.' });
+  // a teacher may only open the history of a student enrolled in one of their classes,
+  // and sees only attempts on that teacher's own quizzes
+  const inMyClass = db.classes.some((c) => c.teacherId === user.id && (c.studentIds || []).includes(stu.id));
+  if (!inMyClass) return send(res, 404, { error: 'Student not found.' });
+  const myQuizIds = new Set(db.quizzes.filter((q) => ownsQuiz(user, q)).map((q) => q.id));
   const attempts = db.attempts
-    .filter((a) => a.userId === stu.id)
+    .filter((a) => a.userId === stu.id && myQuizIds.has(a.quizId))
     .map((a) => ({
       id: a.id, quizId: a.quizId, quizTitle: (byId(db.quizzes, a.quizId) || { title: '(deleted quiz)' }).title,
       status: a.status, score: a.score, maxScore: a.maxScore, percent: a.percent, passed: a.passed,
@@ -1050,30 +1057,6 @@ route('GET', '/api/students/([A-Za-z0-9_]+)/history', async ({ user, params, res
 });
 
 /* ======== DATA BACKUP (teacher) ======== */
-route('GET', '/api/admin/export', async ({ user, res }) => {
-  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
-  const copy = Object.assign({}, db, { sessions: {} }); // never export session tokens
-  send(res, 200, copy);
-});
-
-route('POST', '/api/admin/import', async ({ user, req, body, res }) => {
-  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
-  const b = (body && body.data && body.data.users) ? body.data : body;
-  if (!b || !Array.isArray(b.users) || !Array.isArray(b.quizzes) ||
-      typeof b.questions !== 'object' || !Array.isArray(b.attempts)) {
-    return send(res, 400, { error: 'Invalid backup file — expected a ClassMark database export (JSON).' });
-  }
-  applyDbData(b);
-  // keep the importing teacher signed in after the swap
-  const m = String(req.headers['authorization'] || '').match(/^Bearer (.+)$/);
-  if (m && db.users.some((u) => u.id === user.id)) db.sessions[m[1]] = { userId: user.id, createdAt: now() };
-  for (const k of Object.keys(db.sessions)) {
-    if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
-  }
-  saveDb();
-  send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
-});
-
 function applyDbData(b) { // swap in a validated database (sessions handled by caller)
   db = {
     users: b.users,
@@ -1244,7 +1227,7 @@ route('GET', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
     out.members = (c.studentIds || [])
       .map((sid) => byId(db.users, sid))
       .filter(Boolean)
-      .map(studentStat)
+      .map((m) => studentStat(m, user))
       .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
   }
   send(res, 200, out);
