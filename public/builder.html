@@ -23,81 +23,85 @@
     </div>
   </section>  </section>
 
-  <div class="twocol">
+  <div class="twocol" id="bcWrap">
     <!-- ============ left: settings + question list ============ -->
     <section>
-      <div class="card tight" style="margin-bottom:16px">
+      <div class="card tight" id="setCard" style="margin-bottom:16px">
         <div class="row" style="margin-bottom:10px">
           <b style="font-size:14.5px" id="setTitle">Quiz settings</b>
         </div>
         <div class="form-err" id="setErr" hidden></div>
-        <div class="field">
-          <label for="qsTitle">Quiz title</label>
-          <input id="qsTitle" type="text" placeholder="Quiz title">
-        </div>
-        <div class="formrow">
-          <div class="field">
-            <label for="qsSubject">Subject</label>
-            <input id="qsSubject" type="text" placeholder="Subject">
+        <div class="cgrid">
+          <div>
+            <div class="field">
+              <label for="qsTitle">Quiz title</label>
+              <input id="qsTitle" type="text" placeholder="Quiz title">
+            </div>
+            <div class="field">
+              <label for="qsSubject">Subject</label>
+              <input id="qsSubject" type="text" placeholder="Subject">
+            </div>
+            <div class="field">
+              <label>Class &amp; course</label>
+              <select id="qsClass"></select>
+              <div class="row" id="crsChips" style="margin-top:8px;flex-wrap:wrap;gap:8px"></div>
+              <div class="row" id="crsNewRow" hidden style="margin-top:8px;gap:10px;flex-wrap:wrap">
+                <input id="crsNewName" type="text" placeholder="New course name" style="flex:1;min-width:160px">
+                <button class="btn sm primary" id="crsNewBtn"></button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="qsDesc">Description</label>
+              <textarea id="qsDesc" placeholder="Description"></textarea>
+            </div>
+          </div>
+          <div>
+            <div class="formrow f3">
+              <div class="field">
+                <label for="qsDur">Duration (min)</label>
+                <input id="qsDur" type="number" value="15" min="1" max="180">
+              </div>
+              <div class="field">
+                <label for="qsPass">Pass mark (%)</label>
+                <input id="qsPass" type="number" value="50" min="0" max="100">
+              </div>
+              <div class="field">
+                <label for="qsAtt">Attempts allowed</label>
+                <input id="qsAtt" type="number" value="2" min="1" max="10">
+              </div>
+            </div>
+            <div class="formrow">
+              <div class="field">
+                <label for="qsOpens">Opens at (optional)</label>
+                <input id="qsOpens" type="datetime-local">
+              </div>
+              <div class="field">
+                <label for="qsCloses">Closes at (optional)</label>
+                <input id="qsCloses" type="datetime-local">
+              </div>
+            </div>
+            <div class="setrow">
+              <label class="sw"><input type="checkbox" id="setShuffle"><i></i></label>
+              <div class="stxt"><b>Shuffle questions per student</b><span>Different order for each candidate.</span></div>
+            </div>
+            <div class="setrow">
+              <label class="sw"><input type="checkbox" id="setShuffleOpt"><i></i></label>
+              <div class="stxt"><b>Shuffle answer options</b><span>Answer positions can't be copied.</span></div>
+            </div>
+            <div class="setrow">
+              <div class="stxt" style="flex:1"><b>Tab-switch policy</b><span>What happens if a candidate leaves the quiz tab.</span>
+                <select id="setTab" style="margin-top:7px">
+                  <option value="warn">Warn &amp; log (recommended)</option>
+                  <option value="autosubmit">Auto-submit quiz</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Class &amp; course</label>
-          <div class="row" style="gap:10px">
-            <select id="qsClass" style="flex:1"></select>
-            <select id="qsCourse" style="flex:1"></select>
-          </div>
-          <div class="row" id="crsNewRow" hidden style="margin-top:8px;gap:10px;flex-wrap:wrap">
-            <input id="crsNewName" type="text" placeholder="New course name" style="flex:1;min-width:160px">
-            <button class="btn sm primary" id="crsNewBtn"></button>
-          </div>
+        <div class="setactions">
+          <button class="btn sm primary block" id="saveSettings" style="margin-top:10px"></button>
         </div>
-        <div class="field">
-          <label for="qsDesc">Description</label>
-          <textarea id="qsDesc" placeholder="Description"></textarea>
-        </div>
-        <div class="formrow">
-          <div class="field">
-            <label for="qsDur">Duration (min)</label>
-            <input id="qsDur" type="number" value="15" min="1" max="180">
-          </div>
-          <div class="field">
-            <label for="qsPass">Pass mark (%)</label>
-            <input id="qsPass" type="number" value="50" min="0" max="100">
-          </div>
-          <div class="field">
-            <label for="qsAtt">Attempts allowed</label>
-            <input id="qsAtt" type="number" value="2" min="1" max="10">
-          </div>
-        </div>
-        <div class="formrow">
-          <div class="field">
-            <label for="qsOpens">Opens at (optional)</label>
-            <input id="qsOpens" type="datetime-local">
-          </div>
-          <div class="field">
-            <label for="qsCloses">Closes at (optional)</label>
-            <input id="qsCloses" type="datetime-local">
-          </div>
-        </div>
-        <div class="setrow">
-          <label class="sw"><input type="checkbox" id="setShuffle"><i></i></label>
-          <div class="stxt"><b>Shuffle questions per student</b><span>Different order for each candidate.</span></div>
-        </div>
-        <div class="setrow">
-          <label class="sw"><input type="checkbox" id="setShuffleOpt"><i></i></label>
-          <div class="stxt"><b>Shuffle answer options</b><span>Answer positions can't be copied.</span></div>
-        </div>
-        <div class="setrow">
-          <div class="stxt" style="flex:1"><b>Tab-switch policy</b><span>What happens if a candidate leaves the quiz tab.</span>
-            <select id="setTab" style="margin-top:7px">
-              <option value="warn">Warn &amp; log (recommended)</option>
-              <option value="autosubmit">Auto-submit quiz</option>
-              <option value="off">Off</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn sm primary block" id="saveSettings" style="margin-top:10px"></button>
       </div>
 
       <div class="card" id="qlistCard" style="position:sticky;top:80px">
@@ -198,7 +202,7 @@
   document.getElementById('resetBtn').innerHTML = icon('x', 14) + ' Cancel edit';
   $('#backLink').href = 'teacher.html';
 
-  /* ---- class & course: a quiz lives inside one course of one of my classes ---- */
+  /* ---- class & courses: a quiz can live in one or more courses of one of my classes ---- */
   var myClasses = [], myCourses = [];
   try {
     var cd = await GET('/api/classes/mine');
@@ -209,7 +213,8 @@
     myCourses = crd.courses || [];
   } catch (err) {}
   var selClass = document.getElementById('qsClass');
-  var selCourse = document.getElementById('qsCourse');
+  var picked = {};          // course ids selected for the current class (tap chips to toggle)
+  var extraCourseIds = [];  // courses of this quiz that live in other classes — kept as-is
   function fillClassSel(selectedId) {
     selClass.innerHTML = myClasses.map(function (c) {
       return '<option value="' + esc(c.id) + '"' + (c.id === selectedId ? ' selected' : '') + '>' + esc(c.name) + '</option>';
@@ -218,14 +223,31 @@
   function coursesOfClass(classId) {
     return myCourses.filter(function (x) { return x.classId === classId; });
   }
-  function fillCourseSel(classId, selectedId) {
-    var list = coursesOfClass(classId);
-    selCourse.innerHTML = list.map(function (x) {
-      return '<option value="' + esc(x.id) + '"' + (x.id === selectedId ? ' selected' : '') + '>' + esc(x.name) + '</option>';
-    }).join('') || '<option value="">No courses yet</option>';
-    document.getElementById('crsNewRow').hidden = !!list.length;
+  function paintCourseChips() {
+    var el = document.getElementById('crsChips');
+    var list = coursesOfClass(selClass.value);
+    el.innerHTML = list.map(function (x) {
+      return '<button type="button" class="chip crschip' + (picked[x.id] ? ' on' : '') + '" data-crs="' + esc(x.id) + '" style="cursor:pointer">' +
+        (picked[x.id] ? icon('check', 13) : '') + esc(x.name) + '</button>';
+    }).join('') || '<span class="small muted">No courses in this class yet.</span>';
+    $$('.crschip', el).forEach(function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute('data-crs');
+        if (picked[id]) delete picked[id]; else picked[id] = true;
+        paintCourseChips();
+      };
+    });
   }
-  selClass.onchange = function () { fillCourseSel(selClass.value, null); };
+  function fillCourseChips(classId, preselectIds) {
+    picked = {};
+    var inClass = coursesOfClass(classId);
+    (preselectIds || []).forEach(function (id) {
+      if (inClass.some(function (x) { return x.id === id; })) picked[id] = true;
+    });
+    document.getElementById('crsNewRow').hidden = !!inClass.length;
+    paintCourseChips();
+  }
+  selClass.onchange = function () { extraCourseIds = []; fillCourseChips(selClass.value, null); };
   document.getElementById('crsNewBtn').innerHTML = icon('plus', 13) + ' Add course';
   document.getElementById('crsNewBtn').onclick = async function () {
     var btn = this;
@@ -234,13 +256,15 @@
       var r = await POST('/api/classes/' + selClass.value + '/courses', { name: document.getElementById('crsNewName').value });
       myCourses.push(r.course);
       document.getElementById('crsNewName').value = '';
-      fillCourseSel(selClass.value, r.course.id);
+      picked[r.course.id] = true;
+      document.getElementById('crsNewRow').hidden = true;
+      paintCourseChips();
       toast('Course created — ' + r.course.name);
     } catch (err) { toast(err.message, 'bad'); }
     btn.disabled = false;
   };
   fillClassSel(myClasses.length === 1 ? myClasses[0].id : null); // preselect the only class, if there is just one
-  fillCourseSel(selClass.value, null);
+  fillCourseChips(selClass.value, null);
 
   var quiz = null;
   var questions = [];
@@ -251,6 +275,8 @@
     document.getElementById('pubBtn').hidden = true;
     document.getElementById('qlistCard').hidden = true;
     document.getElementById('editorCard').hidden = true;
+    document.getElementById('bcWrap').classList.add('creating');
+    document.getElementById('setCard').classList.add('create-wide');
   } else {
     var data;
     try { data = await GET('/api/quizzes/' + quizId + '/questions'); }
@@ -271,8 +297,12 @@
     document.getElementById('qsAtt').value = quiz.attemptsAllowed;
     dtSet('qsOpens', quiz.opensAt);
     dtSet('qsCloses', quiz.closesAt);
-    var qc = myCourses.filter(function (x) { return x.id === (quiz.courseId || (quiz.course && quiz.course.id)); })[0] || null;
-    if (qc) { fillClassSel(qc.classId); fillCourseSel(qc.classId, qc.id); }
+    var qcs = myCourses.filter(function (x) { return (quiz.courseIds || []).indexOf(x.id) > -1; });
+    if (qcs.length) {
+      fillClassSel(qcs[0].classId);
+      fillCourseChips(qcs[0].classId, qcs.map(function (x) { return x.id; }));
+      extraCourseIds = qcs.filter(function (x) { return x.classId !== qcs[0].classId; }).map(function (x) { return x.id; });
+    }
   }
 
   /* ================= publish toggle (edit mode) ================= */
@@ -323,8 +353,9 @@
     var btn = this;
     var errBox = document.getElementById('setErr');
     errBox.hidden = true;
-    if (!selCourse.value) {
-      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick a course for this quiz — create one inside one of your classes first.</span>';
+    var courseIds = Object.keys(picked).concat(extraCourseIds);
+    if (!courseIds.length) {
+      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick at least one course for this quiz — create one inside one of your classes first.</span>';
       errBox.hidden = false;
       return;
     }
@@ -347,7 +378,7 @@
       tabSwitchPolicy: setTab.value,
       opensAt: opensAt,
       closesAt: closesAt,
-      courseId: selCourse.value || null
+      courseIds: courseIds
     };
     try {
       if (creating) {

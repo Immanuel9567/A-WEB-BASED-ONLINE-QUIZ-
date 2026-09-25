@@ -43,8 +43,8 @@ function meta(q) { // safe quiz summary (no answers involved)
     durationMin: q.durationMin, passMark: q.passMark, attemptsAllowed: q.attemptsAllowed,
     shuffle: !!q.shuffle, shuffleOptions: !!q.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(q.tabSwitchPolicy) ? q.tabSwitchPolicy : 'warn',
-    published: !!q.published, createdAt: q.createdAt, classes: q.classes || [],
-    courseId: q.courseId || null
+    published: !!q.published, createdAt: q.createdAt, classes: quizClassIds(q),
+    courseIds: courseIdsOf(q)
   };
 }
 function publicQuestion(q) { // what a student may see BEFORE grading
@@ -181,9 +181,11 @@ function migrateModel() {
     if (!x) { x = { id: uid('crs'), classId, name, createdAt: now() }; db.courses.push(x); changed = true; }
     return x;
   };
-  const clones = [];
   for (const q of db.quizzes) {
-    if (q.courseId && byId(db.courses, q.courseId)) continue; // already migrated
+    if (courseIdsOf(q).length) { // already migrated — just drop the legacy single-course field
+      if (q.courseId !== undefined) { q.courseIds = courseIdsOf(q); delete q.courseId; changed = true; }
+      continue;
+    }
     const teacher = findTeacher(q.createdBy);
     let targets = (q.classes || []).filter((id) => byId(db.classes, id));
     if (!targets.length) {
@@ -192,23 +194,13 @@ function migrateModel() {
     }
     if (!targets.length) continue; // orphan with no resolvable owner — leave untouched
     const name = String(q.subject || '').trim() || 'General';
-    q.courseId = courseFor(targets[0], name).id;
-    q.classes = [targets[0]];
+    // one course per class the quiz lived in — a quiz may span courses, so no cloning any more
+    q.courseIds = targets.map((t) => courseFor(t, name).id);
+    q.classes = targets.slice();
+    delete q.courseId;
     changed = true;
-    for (let i = 1; i < targets.length; i++) {
-      const clone = JSON.parse(JSON.stringify(q));
-      clone.id = uid('qz');
-      clone.createdAt = now();
-      clone.courseId = courseFor(targets[i], name).id;
-      clone.classes = [targets[i]];
-      clones.push({ clone, from: q.id });
-    }
   }
-  for (const { clone, from } of clones) {
-    db.quizzes.push(clone);
-    db.questions[clone.id] = (db.questions[from] || []).map((x) => JSON.parse(JSON.stringify(x)));
-  }
-  return changed || clones.length > 0;
+  return changed;
 }
 
 /* -------------------------------------------------------- grading engine    */
@@ -368,9 +360,13 @@ function genClassCode() {
 function myClassIds(u) {
   return db.classes.filter((c) => (c.studentIds || []).includes(u.id)).map((c) => c.id);
 }
-function quizClassIds(q) { // a quiz lives in ONE course; the course lives in ONE class
-  const crs = byId(db.courses, q.courseId);
-  if (crs && byId(db.classes, crs.classId)) return [crs.classId];
+function courseIdsOf(q) { // a quiz can live in one or more courses
+  const ids = Array.isArray(q.courseIds) && q.courseIds.length ? q.courseIds : (q.courseId ? [q.courseId] : []);
+  return [...new Set(ids)].filter((id) => byId(db.courses, id));
+}
+function quizClassIds(q) { // the classes of every course the quiz lives in
+  const set = [...new Set(courseIdsOf(q).map((id) => byId(db.courses, id).classId))].filter((id) => byId(db.classes, id));
+  if (set.length) return set;
   return (q.classes || []).filter((id) => byId(db.classes, id)); // legacy fallback
 }
 function canSeeQuiz(u, q) {
@@ -385,6 +381,16 @@ function resolveCourse(courseId, teacher) { // the course's class must belong to
   if (!crs) return null;
   const cls = byId(db.classes, crs.classId);
   return (cls && cls.teacherId === teacher.id) ? crs : null;
+}
+function resolveCourses(courseIds, teacher) { // one or more of the teacher's own courses
+  const raw = Array.isArray(courseIds) ? courseIds : [courseIds];
+  const out = [];
+  for (const id of [...new Set(raw)].filter(Boolean)) {
+    const crs = resolveCourse(id, teacher);
+    if (!crs) return null;
+    out.push(crs);
+  }
+  return out.length ? out : null;
 }
 function notifyQuizPublished(quiz, teacher) { // members of the quiz's class only
   const ids = new Set();
@@ -481,7 +487,6 @@ route('GET', '/api/auth/me', async ({ user, res }) => {
 /* ======== USERS (teacher) ======== */
 /* ======== QUIZZES ======== */
 function quizFor(q, user) { // meta + counters, personalised for the viewer
-  const crs = byId(db.courses, q.courseId);
   const classInfo = quizClassIds(q)
     .map((id) => byId(db.classes, id))
     .filter(Boolean)
@@ -495,7 +500,7 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
   const inprog = mine.find((a) => a.status === 'in_progress');
   return Object.assign(meta(q), {
     opensAt: q.opensAt || null, closesAt: q.closesAt || null,
-    course: crs ? { id: crs.id, name: crs.name } : null,
+    courses: courseIdsOf(q).map((id) => { const x = byId(db.courses, id); return x ? { id: x.id, name: x.name } : null; }).filter(Boolean),
     classInfo,
     questionCount: live.length,
     draftCount: qs.length - live.length,
@@ -557,9 +562,9 @@ route('POST', '/api/quizzes', async ({ user, body, res }) => {
   if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
   const v = validQuizBody(body);
   if (v.error) return send(res, 400, { error: v.error });
-  const course = resolveCourse(body.courseId, user);
-  if (!course) return send(res, 400, { error: 'Pick a course for this quiz — create one inside one of your classes first.' });
-  const quiz = Object.assign({ id: uid('qz'), createdAt: now(), createdBy: user.id, courseId: course.id, classes: [course.classId] }, v);
+  const courses = resolveCourses(body.courseIds || body.courseId, user);
+  if (!courses) return send(res, 400, { error: 'Pick at least one course for this quiz — create one inside one of your classes first.' });
+  const quiz = Object.assign({ id: uid('qz'), createdAt: now(), createdBy: user.id, courseIds: courses.map((x) => x.id), classes: [...new Set(courses.map((x) => x.classId))] }, v);
   db.quizzes.push(quiz);
   db.questions[quiz.id] = [];
   if (quiz.published) notifyQuizPublished(quiz, user);
@@ -673,16 +678,17 @@ route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res })
   if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const v = validQuizBody(Object.assign({}, quiz, body));
   if (v.error) return send(res, 400, { error: v.error });
-  let nextCourseId = quiz.courseId || null, nextClasses = quizClassIds(quiz);
-  if (body.courseId !== undefined) {
-    const course = resolveCourse(body.courseId, user);
-    if (!course) return send(res, 400, { error: 'Pick a course for this quiz — create one inside one of your classes first.' });
-    nextCourseId = course.id;
-    nextClasses = [course.classId];
+  let nextCourseIds = courseIdsOf(quiz), nextClasses = quizClassIds(quiz);
+  if (body.courseIds !== undefined || body.courseId !== undefined) {
+    const courses = resolveCourses(body.courseIds || body.courseId, user);
+    if (!courses) return send(res, 400, { error: 'Pick at least one course for this quiz — create one inside one of your classes first.' });
+    nextCourseIds = courses.map((x) => x.id);
+    nextClasses = [...new Set(courses.map((x) => x.classId))];
   }
   const wasPublished = quiz.published;
   Object.assign(quiz, v);
-  quiz.courseId = nextCourseId;
+  quiz.courseIds = nextCourseIds;
+  delete quiz.courseId;
   quiz.classes = nextClasses;
   if (!wasPublished && quiz.published) notifyQuizPublished(quiz, user);
   saveDb();
@@ -1290,7 +1296,7 @@ route('POST', '/api/classes/([A-Za-z0-9_]+)/kick', async ({ user, params, body, 
 function coursePublic(x) {
   return x && {
     id: x.id, name: x.name, classId: x.classId, createdAt: x.createdAt,
-    quizCount: db.quizzes.filter((q) => q.courseId === x.id).length
+    quizCount: db.quizzes.filter((q) => courseIdsOf(q).includes(x.id)).length
   };
 }
 route('GET', '/api/courses/mine', async ({ user, res }) => {
@@ -1334,7 +1340,7 @@ route('DELETE', '/api/courses/([A-Za-z0-9_]+)', async ({ user, params, res }) =>
   if (!x) return send(res, 404, { error: 'Course not found.' });
   const c = byId(db.classes, x.classId);
   if (!c || c.teacherId !== user.id) return send(res, 403, { error: 'This course belongs to another teacher.' });
-  const n = db.quizzes.filter((q) => q.courseId === x.id).length;
+  const n = db.quizzes.filter((q) => courseIdsOf(q).includes(x.id)).length;
   if (n) return send(res, 400, { error: 'This course still has ' + n + ' quiz' + (n === 1 ? '' : 'zes') + ' — delete or move them first.' });
   db.courses = db.courses.filter((y) => y.id !== x.id);
   saveDb();

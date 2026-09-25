@@ -268,7 +268,7 @@
   /* ---- quizzes of the class (optionally filtered to one course) ---- */
   function renderQuizzes() {
     var qEl = document.getElementById('quizzes');
-    var shown = crsFilter ? d.quizzes.filter(function (q) { return q.course && q.course.id === crsFilter; }) : d.quizzes;
+    var shown = crsFilter ? d.quizzes.filter(function (q) { return (q.courses || []).some(function (x) { return x.id === crsFilter; }); }) : d.quizzes;
     if (!d.quizzes.length) {
       qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
         (owner ? 'No quizzes in this class yet — create a course above, then add quizzes to it from Create quiz.' : 'Your teacher has not added class quizzes yet. Check back soon.') + '</div></div>';
@@ -316,8 +316,8 @@
       '<div class="card hover classcard"' + tint + '>' +
       '<div class="row" style="margin-bottom:9px"><span class="chip">' + icon('fileText', 13) + ' ' + esc(q.subject) + '</span>' +
       '<span class="chip classchip">' + (c && c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>' +
-      (q.course && String(q.course.name).toLowerCase() !== String(q.subject || '').toLowerCase()
-        ? '<span class="chip">' + icon('bookOpen', 13) + ' ' + esc(q.course.name) + '</span>' : '') +
+      (q.courses || []).filter(function (x) { return String(x.name).toLowerCase() !== String(q.subject || '').toLowerCase(); })
+        .map(function (x) { return '<span class="chip">' + icon('bookOpen', 13) + ' ' + esc(x.name) + '</span>'; }).join('') +
       '<span class="spacer"></span>' + outcome + '</div>' +
       '<h3 style="font-size:18.5px">' + esc(q.title) + '</h3>' +
       '<p class="muted small" style="min-height:38px">' + esc(q.description || '') + '</p>' +
