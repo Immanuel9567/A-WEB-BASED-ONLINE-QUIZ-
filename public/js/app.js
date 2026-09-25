@@ -28,6 +28,7 @@
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
     chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
     chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+    chevronDown: '<polyline points="6 9 12 15 18 9"/>',
     arrowLeft: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
     eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
     fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
@@ -503,6 +504,104 @@
     try { navigator.clipboard.writeText(text); toast(msg); }
     catch (e) { toast(msg, 'info'); }
   };
+
+  /* ---- custom dropdowns: themed popups for <select> (the native popup cannot be styled) ---- */
+  var ddClose = null; // the currently open dropdown's close function
+  function ddEnhance(sel) {
+    if (sel.__dd) return;
+    sel.__dd = true;
+    var wrap = document.createElement('div');
+    wrap.className = 'dd';
+    wrap.style.cssText = sel.style.cssText; // keep layout hints like flex:1 on the wrapper
+    sel.style.cssText = '';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dd-btn';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    var menu = document.createElement('div');
+    menu.className = 'dd-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.hidden = true;
+    wrap.appendChild(btn);
+    wrap.appendChild(menu);
+
+    function label() {
+      var o = sel.options[sel.selectedIndex];
+      return o ? String(o.textContent) : '';
+    }
+    function sync() {
+      btn.innerHTML = '<span class="dd-val">' + esc(label() || '—') + '</span>' + icon('chevronDown', 16);
+      btn.title = label();
+    }
+    function close() {
+      menu.hidden = true;
+      wrap.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+      if (ddClose === close) ddClose = null;
+    }
+    function build() {
+      menu.innerHTML = '';
+      Array.prototype.forEach.call(sel.options, function (o, i) {
+        var it = document.createElement('button');
+        it.type = 'button';
+        it.className = 'dd-item' + (i === sel.selectedIndex ? ' on' : '');
+        it.setAttribute('role', 'option');
+        it.setAttribute('aria-selected', i === sel.selectedIndex ? 'true' : 'false');
+        it.innerHTML = '<span class="dd-txt">' + esc(String(o.textContent)) + '</span>' +
+          (i === sel.selectedIndex ? icon('check', 15) : '');
+        it.onclick = function (e) {
+          e.stopPropagation();
+          if (sel.selectedIndex !== i) {
+            sel.selectedIndex = i;
+            sync();
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          close();
+        };
+        menu.appendChild(it);
+      });
+    }
+    function open() {
+      if (ddClose) ddClose();
+      build();
+      menu.hidden = false;
+      wrap.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+      ddClose = close;
+    }
+    btn.onclick = function (e) {
+      e.stopPropagation();
+      if (menu.hidden) open(); else close();
+    };
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (menu.hidden) open();
+        var items = $$('.dd-item', menu);
+        if (items.length) (e.key === 'ArrowDown' ? items[0] : items[items.length - 1]).focus();
+      }
+    });
+    menu.addEventListener('click', function (e) { e.stopPropagation(); });
+    menu.addEventListener('keydown', function (e) {
+      var items = $$('.dd-item', menu);
+      var i = items.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); close(); btn.focus(); }
+      else if (e.key === 'ArrowDown' && i > -1 && i < items.length - 1) { e.preventDefault(); items[i + 1].focus(); }
+      else if (e.key === 'ArrowUp' && i > 0) { e.preventDefault(); items[i - 1].focus(); }
+      else if (e.key === 'Tab') close();
+    });
+    sel.addEventListener('change', sync);
+    new MutationObserver(sync).observe(sel, { childList: true }); // page code repopulates options
+    sync();
+  }
+  function ddEnhanceAll() { $$('select').forEach(ddEnhance); }
+  document.addEventListener('click', function () { if (ddClose) ddClose(); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ddEnhanceAll);
+  else ddEnhanceAll();
+  /* ---- end custom dropdowns ---- */
 
   /* quiz availability window: 'upcoming' | 'open' | 'closed' */
   window.winState = function (q) {
