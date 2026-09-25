@@ -55,7 +55,7 @@
       <form id="regForm" hidden novalidate>
         <div class="field">
           <label for="rgName">Full name</label>
-          <input id="rgName" type="text" autocomplete="name" placeholder="e.g. Ngozi Eze">
+          <input id="rgName" type="text" autocomplete="name" placeholder="Full name">
         </div>
         <div class="field">
           <label for="rgEmail">Email address</label>
@@ -73,9 +73,6 @@
             <button type="button" id="roleTeacher"></button>
           </div>
           <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
-        </div>
-        <div class="hint" id="teacherHint" hidden style="margin-top:-6px">
-          As a teacher you get a class automatically — create your courses inside it and share one join code with your students.
         </div>
         <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
       </form>
@@ -121,13 +118,11 @@
     role = 'student';
     this.classList.add('on');
     document.getElementById('roleTeacher').classList.remove('on');
-    document.getElementById('teacherHint').hidden = true;
   };
   document.getElementById('roleTeacher').onclick = function () {
     role = 'teacher';
     this.classList.add('on');
     document.getElementById('roleStudent').classList.remove('on');
-    document.getElementById('teacherHint').hidden = false;
   };
 
   function afterAuth(user) {

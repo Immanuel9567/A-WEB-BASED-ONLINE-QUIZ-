@@ -33,12 +33,12 @@
         <div class="form-err" id="setErr" hidden></div>
         <div class="field">
           <label for="qsTitle">Quiz title</label>
-          <input id="qsTitle" type="text" placeholder="e.g. Data Structures — Mid-Semester Test">
+          <input id="qsTitle" type="text" placeholder="Quiz title">
         </div>
         <div class="formrow">
           <div class="field">
             <label for="qsSubject">Subject</label>
-            <input id="qsSubject" type="text" placeholder="e.g. Data Structures">
+            <input id="qsSubject" type="text" placeholder="Subject">
           </div>
         </div>
         <div class="field">
@@ -48,14 +48,13 @@
             <select id="qsCourse" style="flex:1"></select>
           </div>
           <div class="row" id="crsNewRow" hidden style="margin-top:8px;gap:10px;flex-wrap:wrap">
-            <input id="crsNewName" type="text" placeholder="New course name, e.g. CSC 204" style="flex:1;min-width:160px">
+            <input id="crsNewName" type="text" placeholder="New course name" style="flex:1;min-width:160px">
             <button class="btn sm primary" id="crsNewBtn"></button>
           </div>
-          <div class="hint">Quizzes live inside a course. Students in the class see every course automatically — no extra code needed.</div>
         </div>
         <div class="field">
           <label for="qsDesc">Description</label>
-          <textarea id="qsDesc" placeholder="What this assessment covers…"></textarea>
+          <textarea id="qsDesc" placeholder="Description"></textarea>
         </div>
         <div class="formrow">
           <div class="field">
@@ -80,10 +79,6 @@
             <label for="qsCloses">Closes at (optional)</label>
             <input id="qsCloses" type="datetime-local">
           </div>
-        </div>
-        <div class="hint" style="margin:-4px 0 14px">
-          Schedule the quiz to a period, e.g. Friday 8:00 PM to 9:00 PM — students can only start
-          inside that period, and anything still in progress ends when it closes. Leave both empty for no schedule.
         </div>
         <div class="setrow">
           <label class="sw"><input type="checkbox" id="setShuffle"><i></i></label>
@@ -143,7 +138,6 @@
           <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>
         <img id="imgPrev" class="qimg" alt="" hidden>
-        <div class="hint">Attach a diagram or screenshot — it is resized automatically and shown with the question.</div>
       </div>
 
       <div id="optsWrap">

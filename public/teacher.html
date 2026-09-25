@@ -175,12 +175,12 @@
         (list.length > 1 ? '<a class="btn sm" href="classes.html">' + icon('sliders', 14) + ' Manage classes</a>' : '') +
         '</div>' +
         '<div class="row" id="clsNewRow" hidden style="margin-bottom:12px;gap:10px;flex-wrap:wrap">' +
-        '<input id="clsName" type="text" placeholder="New class name, e.g. JSS 2 Blue" style="flex:1;min-width:170px">' +
+        '<input id="clsName" type="text" placeholder="New class name" style="flex:1;min-width:170px">' +
         '<button class="btn primary" id="clsGo"></button>' +
         '<button class="btn" id="clsCancelNew">Cancel</button>' +
         '</div>' +
-        '<div class="small muted" style="margin:0 0 10px"><b>My classes</b> — the join code sits next to each class; tap it to copy.</div>' +
-        (rows || '<p class="small muted" style="margin:0">No classes yet — create one above. Students join with its code and automatically get every course you add.</p>');
+        '<div class="small muted" style="margin:0 0 10px"><b>My classes</b></div>' +
+        (rows || '<p class="small muted" style="margin:0">No classes yet — create one above.</p>');
       var newRow = document.getElementById('clsNewRow');
       document.getElementById('clsNew').onclick = function () {
         newRow.hidden = !newRow.hidden;

@@ -58,11 +58,10 @@
 <div class="overlay" id="clsOverlay" hidden>
   <div class="modal">
     <h3>Class settings</h3>
-    <p class="muted small">Pick the class colour and rename it if you like. The colour tints this class's cards and notifications for your students.</p>
     <div class="form-err" id="clsErr" hidden></div>
     <div class="field">
       <label for="clsNameInput">Class name</label>
-      <input id="clsNameInput" type="text" placeholder="e.g. JSS 2 Blue">
+      <input id="clsNameInput" type="text" placeholder="Class name">
     </div>
     <div class="field">
       <label>Class colour</label>
@@ -79,11 +78,10 @@
 <div class="overlay" id="crsOverlay" hidden>
   <div class="modal">
     <h3>Rename course</h3>
-    <p class="muted small">Courses group the quizzes of one subject inside this class. Students in the class get every course automatically.</p>
     <div class="form-err" id="crsErr" hidden></div>
     <div class="field">
       <label for="crsNameInput">Course name</label>
-      <input id="crsNameInput" type="text" placeholder="e.g. CSC 204">
+      <input id="crsNameInput" type="text" placeholder="Course name">
     </div>
     <div class="modal-actions">
       <button type="button" class="btn" id="crsCancel">Cancel</button>
@@ -219,7 +217,7 @@
     var html = '<div class="row" style="flex-wrap:wrap;gap:8px">' + chips + '</div>';
     if (owner) {
       html += '<div class="row" style="margin-top:14px;gap:10px;flex-wrap:wrap">' +
-        '<input id="crsName" type="text" placeholder="New course, e.g. CSC 204" style="flex:1;min-width:180px">' +
+        '<input id="crsName" type="text" placeholder="New course" style="flex:1;min-width:180px">' +
         '<button class="btn primary" id="crsGo"></button></div>';
       html += list.map(function (x) {
         return '<div class="row clsrow" style="margin-top:10px;gap:10px">' +
