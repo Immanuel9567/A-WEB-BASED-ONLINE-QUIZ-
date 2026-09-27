@@ -23,12 +23,22 @@
 
   <section class="card tight" id="classCard"><p class="small muted skeleton">Loading…</p></section>
 
-  <h2 class="sec">My quizzes</h2>
+  <div class="row qzbar">
+    <h2 class="sec" style="margin:0">My quizzes</h2>
+    <span class="spacer"></span>
+    <div class="qz-search"><span class="qs-ic" id="qsIco"></span><input id="qzSearch" type="text" placeholder="Search quizzes" autocomplete="off"></div>
+    <select id="qzClassFilter" style="width:200px" title="Filter by class"></select>
+  </div>
   <section class="card tablecard">
     <table>
       <thead><tr>
-        <th>Quiz</th><th>Status</th><th>Questions</th><th>Duration</th><th>Pass</th>
-        <th>Attempts</th><th>Average</th><th style="text-align:right">Actions</th>
+        <th>Quiz</th>
+        <th id="statusTh" class="sortable">Status <span class="sarr"></span></th>
+        <th class="sortable" data-k="questions">Questions <span class="sarr"></span></th>
+        <th class="sortable" data-k="duration">Duration <span class="sarr"></span></th>
+        <th class="sortable" data-k="pass">Pass <span class="sarr"></span></th>
+        <th class="sortable" data-k="attempts">Attempts <span class="sarr"></span></th>
+        <th>Average</th><th style="text-align:right">Actions</th>
       </tr></thead>
       <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
     </table>
@@ -60,8 +70,8 @@
       ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10
       : null;
     var t = Date.now();
-    var scheduled = quizzes.filter(function (q) { return q.opensAt && q.opensAt > t; }).length;
-    var expired = quizzes.filter(function (q) { return q.closesAt && q.closesAt <= t; }).length;
+    var scheduled = quizzes.filter(function (q) { return q.published && q.opensAt && q.opensAt > t; }).length;
+    var expired = quizzes.filter(function (q) { return q.published && q.closesAt && q.closesAt <= t; }).length;
     var active = quizzes.filter(function (q) {
       return q.published && !(q.opensAt && q.opensAt > t) && !(q.closesAt && q.closesAt <= t);
     }).length;
@@ -87,10 +97,120 @@
     if (!quizzes.length) {
       tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
         'No quizzes yet — use Create quiz in the menu.</div></td></tr>';
-    } else {
-      tb.innerHTML = quizzes.map(row).join('');
-      wire();
+      return;
     }
+    var list = quizzes.filter(function (q) {
+      if (qzCls && !(q.classInfo || []).some(function (c) { return c.id === qzCls; })) return false;
+      if (qzStatus && statusOf(q) !== qzStatus) return false;
+      if (qzSearch) {
+        var hay = (q.title + ' ' + q.subject + ' ' + (q.classInfo || []).map(function (c) { return c.name; }).join(' ')).toLowerCase();
+        if (hay.indexOf(qzSearch) < 0) return false;
+      }
+      return true;
+    });
+    if (qzSortKey) {
+      var get = SORT_KEYS[qzSortKey];
+      var m = qzSortDir === 1 ? -1 : 1;
+      list.sort(function (a, b) {
+        return (get(b) - get(a) || a.title.localeCompare(b.title)) * m;
+      });
+    }
+    paintSortArrows();
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('search', 30) + '</div>' +
+        'No quizzes match these filters.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = list.map(row).join('');
+    wire();
+  }
+
+  /* ---- my-quizzes toolbar: search, class filter, status popup, sorting ---- */
+  var qzSearch = '', qzCls = '', qzStatus = '';
+  var qzSortKey = '', qzSortDir = -1; // first click sorts biggest-first, second click reverses
+  var SORT_KEYS = {
+    questions: function (q) { return q.questionCount; },
+    duration: function (q) { return q.durationMin; },
+    pass: function (q) { return q.passMark; },
+    attempts: function (q) { return q.attemptCount; }
+  };
+  function statusOf(q) { // one status per quiz — matches the badge shown in the row
+    var t = Date.now();
+    if (!q.published) return 'draft';
+    if (q.opensAt && t < q.opensAt) return 'scheduled';
+    if (q.closesAt && t >= q.closesAt) return 'expired';
+    return 'ongoing';
+  }
+  document.getElementById('qsIco').innerHTML = icon('search', 15);
+  document.getElementById('qzSearch').oninput = function () {
+    qzSearch = this.value.trim().toLowerCase();
+    renderTable();
+  };
+  var selQzCls = document.getElementById('qzClassFilter');
+  selQzCls.innerHTML = '<option value="">All classes</option>';
+  selQzCls.onchange = function () { qzCls = this.value; renderTable(); };
+
+  /* status filter — themed popup under the column title (fixed, so the table's
+     overflow-x scroll container can never clip it) */
+  var statusTh = document.getElementById('statusTh');
+  var statusMenu = document.createElement('div');
+  statusMenu.className = 'dd-menu qz-status-menu';
+  statusMenu.setAttribute('role', 'listbox');
+  statusMenu.hidden = true;
+  document.body.appendChild(statusMenu);
+  var STATUSES = [
+    { v: '', l: 'All statuses' },
+    { v: 'ongoing', l: 'Ongoing' },
+    { v: 'scheduled', l: 'Scheduled' },
+    { v: 'expired', l: 'Expired' },
+    { v: 'draft', l: 'Draft' }
+  ];
+  function paintStatusTh() {
+    statusTh.querySelector('.sarr').innerHTML = icon('chevronDown', 12);
+    statusTh.classList.toggle('on', !!qzStatus || !statusMenu.hidden);
+  }
+  function closeStatusMenu() { statusMenu.hidden = true; paintStatusTh(); }
+  statusTh.onclick = function () {
+    if (statusMenu.hidden) {
+      statusMenu.innerHTML = STATUSES.map(function (s) {
+        return '<button type="button" class="dd-item' + (qzStatus === s.v ? ' on' : '') + '" data-st="' + s.v + '" role="option">' +
+          '<span class="dd-txt">' + s.l + '</span>' + (qzStatus === s.v ? icon('check', 15) : '') + '</button>';
+      }).join('');
+      var r = statusTh.getBoundingClientRect();
+      statusMenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 200)) + 'px';
+      statusMenu.style.top = (r.bottom + 6) + 'px';
+      statusMenu.hidden = false;
+      paintStatusTh();
+    } else closeStatusMenu();
+  };
+  statusMenu.addEventListener('click', function (e) {
+    var b = e.target.closest('.dd-item');
+    if (!b) return;
+    qzStatus = b.getAttribute('data-st');
+    closeStatusMenu();
+    renderTable();
+  });
+  document.addEventListener('click', function (e) {
+    if (!statusMenu.hidden && !statusTh.contains(e.target) && !statusMenu.contains(e.target)) closeStatusMenu();
+  }, true);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !statusMenu.hidden) closeStatusMenu(); });
+  document.addEventListener('scroll', function () { if (!statusMenu.hidden) closeStatusMenu(); }, true);
+  paintStatusTh();
+
+  /* numeric column sorting */
+  $$('.tablecard th[data-k]').forEach(function (th) {
+    th.onclick = function () {
+      var k = th.getAttribute('data-k');
+      if (qzSortKey === k) qzSortDir = -qzSortDir;
+      else { qzSortKey = k; qzSortDir = -1; }
+      renderTable();
+    };
+  });
+  function paintSortArrows() {
+    $$('.tablecard th[data-k]').forEach(function (th) {
+      var on = th.getAttribute('data-k') === qzSortKey;
+      th.querySelector('.sarr').innerHTML = on ? icon(qzSortDir > 0 ? 'arrowUp' : 'arrowDown', 12) : '';
+    });
   }
   try { await refresh(); }
   catch (e) {
@@ -169,6 +289,10 @@
     try {
       var d = await GET('/api/classes/mine');
       var list = d.classes || [];
+      selQzCls.innerHTML = '<option value="">All classes</option>' + list.map(function (c) {
+        return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+      }).join('');
+      if (list.some(function (c) { return c.id === qzCls; })) selQzCls.value = qzCls; else qzCls = '';
       var rows = list.map(function (c) {
         return '<div class="row clsrow" style="margin-bottom:10px">' +
           (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span>' : '') +

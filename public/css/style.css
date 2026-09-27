@@ -506,6 +506,16 @@ input[type=datetime-local]::-webkit-calendar-picker-indicator:hover { opacity: .
 th[data-k] { cursor: pointer; user-select: none; white-space: nowrap; }
 th[data-k]:hover { color: #1a73e8; }
 th .sarr { display: inline-flex; vertical-align: -2px; margin-left: 3px; color: #1a73e8; }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover, th.sortable.on { color: #1a73e8; }
+.qz-status-menu { position: fixed; right: auto; width: 190px; }
+
+/* my-quizzes toolbar: search + class filter next to the heading */
+.qzbar { margin: 30px 0 12px; }
+.qz-search { position: relative; flex: 1; min-width: 170px; max-width: 300px; }
+.qz-search input { width: 100%; padding-left: 36px; }
+.qz-search .qs-ic { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #5f6368; display: inline-flex; pointer-events: none; }
+@media (max-width: 640px) { .qzbar { margin: 22px 0 10px; } }
 
 /* ---------------------------------------------------------------- builder  */
 .optrow { display: flex; gap: 9px; align-items: center; margin-bottom: 9px; }
