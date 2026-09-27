@@ -59,10 +59,19 @@
     var overallAvg = withAvg.length
       ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10
       : null;
+    var t = Date.now();
+    var scheduled = quizzes.filter(function (q) { return q.opensAt && q.opensAt > t; }).length;
+    var expired = quizzes.filter(function (q) { return q.closesAt && q.closesAt <= t; }).length;
+    var active = quizzes.filter(function (q) {
+      return q.published && !(q.opensAt && q.opensAt > t) && !(q.closesAt && q.closesAt <= t);
+    }).length;
     document.getElementById('stats').innerHTML =
       st(quizzes.length, 'Quizzes created') +
+      st(active, 'Active quizzes') +
+      st(scheduled, 'Scheduled quizzes') +
+      st(expired, 'Expired quizzes') +
       stLink(students.length, 'My students', 'students.html', 'View list') +
-      st(totalAttempts, 'Attempts (incl. live)') +
+      st(totalAttempts, 'Attempts') +
       st(fmtPct(overallAvg), 'Average score', true);
   }
   function st(v, l, acc) {
