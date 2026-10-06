@@ -28,6 +28,16 @@
 
   <!-- ================= MONITOR ================= -->
   <section id="tab-monitor">
+    <div class="card tight" id="waitRoomCard" hidden>
+      <div class="row" style="gap:14px;flex-wrap:wrap;align-items:center">
+        <span class="eico" id="waitRoomIco" style="color:#1a73e8"></span>
+        <div style="flex:1;min-width:220px">
+          <b>Waiting room</b>
+          <div class="small muted" id="waitRoomTxt"></div>
+        </div>
+        <button class="btn primary" id="startQuizBtn" type="button"></button>
+      </div>
+    </div>
     <div class="pillrow" id="monSummary"></div>
     <section class="card tablecard">
       <table>
@@ -127,6 +137,7 @@
   var monFilters = new Set(); // status filters: click filters, click again unfiltered
 
   var FILTERS = [
+    ['waiting', 'Waiting', 'clock'],
     ['in_progress', 'Writing now', 'activity'],
     ['submitted', 'Submitted', 'checkCircle'],
     ['expired', 'Expired', 'clock']
@@ -134,7 +145,7 @@
   function renderSummary() {
     if (!mon) return;
     var s = mon.summary;
-    var counts = { in_progress: s.inProgress, submitted: s.submitted, expired: s.expired };
+    var counts = { waiting: s.waiting, in_progress: s.inProgress, submitted: s.submitted, expired: s.expired };
     var html = pill(icon('users', 14) + ' ' + s.total + ' attempts', '');
     FILTERS.forEach(function (f) {
       html += '<button type="button" class="chip filter' + (monFilters.has(f[0]) ? ' on' : '') + '" data-f="' + f[0] + '" title="Click to filter, click again to unfilter">' +
@@ -170,6 +181,28 @@
     } else ns.hidden = true;
   }
 
+  /* ================= waiting room: the teacher starts the quiz for everyone ================= */
+  function renderWaitRoom() {
+    var card = document.getElementById('waitRoomCard');
+    var btn = document.getElementById('startQuizBtn');
+    if (!mon || mon.quiz.startedAt || !mon.quiz.published) { card.hidden = true; return; }
+    card.hidden = false;
+    document.getElementById('waitRoomIco').innerHTML = icon('clock', 26);
+    document.getElementById('waitRoomTxt').textContent = mon.summary.waiting
+      ? mon.summary.waiting + ' student' + (mon.summary.waiting === 1 ? ' is' : 's are') + ' checked in and waiting for you to start.'
+      : 'No students have entered yet — students click Enter on their dashboard and wait here.';
+    btn.innerHTML = icon('zap', 15) + ' Start quiz' + (mon.summary.waiting ? ' (' + mon.summary.waiting + ')' : '');
+    btn.disabled = !mon.summary.waiting;
+    btn.onclick = async function () {
+      btn.disabled = true;
+      try {
+        var r = await POST('/api/quizzes/' + quizId + '/start', {});
+        toast('Quiz started — ' + r.started + ' student' + (r.started === 1 ? '' : 's') + ' writing now');
+        loadMon();
+      } catch (err) { toast(err.message, 'bad'); btn.disabled = false; }
+    };
+  }
+
   /* ================= LIVE MONITOR (poll @2s) ================= */
   async function loadMon() {
     try {
@@ -181,6 +214,7 @@
 
       renderSummary();
       renderMonRows();
+      renderWaitRoom();
     } catch (err) {
       document.getElementById('monRows').innerHTML =
         '<tr><td colspan="7" class="muted">' + esc(err.message) + '</td></tr>';
@@ -188,7 +222,8 @@
   }
 
   function monRow(r) {
-    var statusBadge = r.status === 'in_progress' ? '<span class="badge info">Writing…</span>'
+    var statusBadge = r.status === 'waiting' ? '<span class="badge info">Waiting</span>'
+      : r.status === 'in_progress' ? '<span class="badge info">Writing…</span>'
       : r.status === 'expired' ? '<span class="badge warn">Expired</span>'
       : '<span class="badge ok">Submitted</span>';
     var pct = Math.round(r.answered / Math.max(1, r.total) * 100);
@@ -197,9 +232,9 @@
       ? '<span class="mono" style="font-weight:700">' + fmtClock((r.endsAt - (Date.now() + monOffset)) / 1000) + '</span>'
       : '<span class="small muted">' + fmtDur(r.durationUsedSec) + ' used</span>';
     var score = r.score ? '<b>' + r.score + '</b>' : '—';
-    var outcome = r.status !== 'in_progress'
+    var outcome = (r.status !== 'in_progress' && r.status !== 'waiting')
       ? '<span class="badge ' + (r.passed ? 'ok' : 'bad') + '">' + fmtPct(r.percent) + '</span>'
-      : (r.tabSwitches ? '<span class="badge warn">' + r.tabSwitches + ' switches</span>' : '<span class="muted">—</span>');
+      : (r.status === 'in_progress' && r.tabSwitches ? '<span class="badge warn">' + r.tabSwitches + ' switches</span>' : '<span class="muted">—</span>');
     return '<tr>' +
       '<td><b>' + esc(r.student) + '</b></td>' +
       '<td>' + statusBadge + '</td>' +

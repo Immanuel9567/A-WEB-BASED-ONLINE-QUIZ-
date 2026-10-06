@@ -29,15 +29,9 @@
     <div class="card skeleton">Loading quizzes…</div>
   </section>
 
-  <h2 class="sec" id="results">My results</h2>
-  <section class="card tablecard">
-    <table>
-      <thead><tr><th>Quiz</th><th>Score</th><th>Percent</th><th>Outcome</th><th>Time used</th><th>Submitted</th><th></th></tr></thead>
-      <tbody id="resultsBody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
-    </table>
-  </section>
-
-  <p style="margin:26px 2px 50px"></p>
+  <div class="row" style="margin:26px 0 50px">
+    <a class="btn" href="results.html" id="allResultsLink"></a>
+  </div>
 </main>
 
 <script src="js/app.js"></script>
@@ -54,11 +48,11 @@
     GET('/api/me/attempts')
   ]);
   var quizzes = data[0].quizzes;
-  var mine = data[1].attempts.filter(function (a) { return a.status !== 'in_progress'; });
+  var mine = data[1].attempts.filter(function (a) { return a.status !== 'in_progress' && a.status !== 'waiting'; });
 
   /* ---- stats ------------------------------------------------------------ */
   var available = quizzes.filter(function (q) {
-    return winState(q) === 'open' && (q.inProgressAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0));
+    return winState(q) === 'open' && (q.inProgressAttemptId || q.waitingAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0));
   });
   var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
   var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
@@ -116,7 +110,7 @@
         try {
           var r = await POST('/api/attempts', { quizId: btn.getAttribute('data-start') });
           location.href = 'quiz.html?attempt=' + r.attempt.id;
-        } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = 'Start quiz'; }
+        } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = 'Enter'; }
       };
     });
   }
@@ -126,7 +120,9 @@
     var cc = cls && cls[0] && cls[0].color ? cls[0].color : '';
     var actions = '';
     var win = winState(q);
-    if (q.inProgressAttemptId) {
+    if (q.waitingAttemptId) {
+      actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.waitingAttemptId + '">' + icon('clock', 15) + ' Waiting for teacher — open</a>';
+    } else if (q.inProgressAttemptId) {
       actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.inProgressAttemptId + '">' + icon('chevronRight', 15) + ' Resume attempt</a>';
     } else if (win === 'upcoming') {
       actions = '<span class="badge plain">Not open yet — opens ' + fmtWhen(q.opensAt) + '</span>';
@@ -137,7 +133,9 @@
     } else if (!q.questionCount) {
       actions = '<span class="badge plain">No questions yet</span>';
     } else {
-      actions = '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Start quiz') + '</button>' +
+      actions = (q.startedAt && !q.attemptsUsed
+        ? '<span class="badge warn">Started — join is closed</span>'
+        : '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Enter') + '</button>') +
         (q.closesAt ? '' : '');
     }
     var outcome = '';
@@ -167,24 +165,7 @@
       '</div>';
   }
 
-  /* ---- results table ----------------------------------------------------- */
-  var rEl = document.getElementById('resultsBody');
-  if (!mine.length) {
-    rEl.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-      'No results yet — take your first quiz above.</div></td></tr>';
-  } else {
-    rEl.innerHTML = mine.map(function (a) {
-      return '<tr>' +
-        '<td><b>' + esc(a.quizTitle) + '</b></td>' +
-        '<td><b>' + a.score + '/' + a.maxScore + '</b></td>' +
-        '<td><b>' + fmtPct(a.percent) + '</b></td>' +
-        '<td><span class="badge ' + (a.passed ? 'ok' : 'bad') + '">' + (a.passed ? 'Pass' : 'Fail') + '</span></td>' +
-        '<td>' + fmtDur(a.durationUsedSec) + '</td>' +
-        '<td class="small muted">' + fmtWhen(a.submittedAt) + '</td>' +
-        '<td><a class="btn sm" href="result.html?attempt=' + a.id + '">View</a></td>' +
-        '</tr>';
-    }).join('');
-  }
+  document.getElementById('allResultsLink').innerHTML = icon('fileText', 14) + ' All my results';
 
   }
   try { loadAll(); }

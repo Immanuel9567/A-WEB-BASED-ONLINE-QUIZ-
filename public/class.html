@@ -289,8 +289,18 @@
       actions = '<div class="row btnrow">' +
         '<a class="btn sm" href="builder.html?id=' + q.id + '">' + icon('edit', 13) + ' Questions</a>' +
         '<a class="btn sm primary" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' Insights</a></div>' +
+        (q.published && !q.startedAt
+          ? '<div class="row" style="margin-top:8px;gap:10px;flex-wrap:wrap;align-items:center">' +
+            (q.waitingCount
+              ? '<button class="btn sm primary" data-startqz="' + q.id + '" data-name="' + esc(q.title) + '" data-n="' + q.waitingCount + '">' + icon('zap', 13) + ' Start quiz</button>' +
+                '<span class="chip">' + icon('clock', 13) + ' ' + q.waitingCount + ' waiting</span>'
+              : '<span class="small muted">' + icon('clock', 13) + ' Students click Enter and wait for your start — <a href="insights.html?id=' + q.id + '"><b>open the waiting room</b></a></span>') +
+            '</div>'
+          : (q.startedAt ? '<div class="row small muted" style="margin-top:8px">' + icon('lock', 13) + ' Started ' + fmtWhen(q.startedAt) + ' — join is closed</div>' : '')) +
         (q.opensAt || q.closesAt ? '<div class="row small muted" style="margin-top:8px">' + icon('timer', 14) + ' ' +
           (win === 'upcoming' ? 'opens ' + fmtWhen(q.opensAt) : win === 'closed' ? 'closed ' + fmtWhen(q.closesAt) : 'closes ' + fmtWhen(q.closesAt)) + '</div>' : '');
+    } else if (q.waitingAttemptId) {
+      actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.waitingAttemptId + '">' + icon('clock', 15) + ' Waiting for teacher — open</a>';
     } else if (q.inProgressAttemptId) {
       actions = '<a class="btn primary block" href="quiz.html?attempt=' + q.inProgressAttemptId + '">' + icon('chevronRight', 15) + ' Resume attempt</a>';
     } else if (win === 'upcoming') {
@@ -302,7 +312,9 @@
     } else if (!q.questionCount) {
       actions = '<span class="badge plain">No questions yet</span>';
     } else {
-      actions = '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Start quiz') + '</button>';
+      actions = (q.startedAt && !q.attemptsUsed
+        ? '<span class="badge warn">Started — join is closed</span>'
+        : '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Enter') + '</button>');
     }
     var outcome = '';
     if (!owner && q.bestPercent != null) {
@@ -339,7 +351,26 @@
         try {
           var r = await POST('/api/attempts', { quizId: btn.getAttribute('data-start') });
           location.href = 'quiz.html?attempt=' + r.attempt.id;
-        } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = 'Start quiz'; }
+        } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = 'Enter'; }
+      };
+    });
+    $$('#quizzes [data-startqz]').forEach(function (b) {
+      b.onclick = async function () {
+        var n = Number(b.getAttribute('data-n')) || 0;
+        var ok = await confirmModal({
+          title: 'Start "' + b.getAttribute('data-name') + '" now?',
+          body: n
+            ? '<b>' + n + '</b> student' + (n === 1 ? ' begins' : 's begin') + ' immediately and everyone else is locked out.'
+            : 'Students begin the moment you start.',
+          okText: 'Start for everyone', danger: true
+        });
+        if (!ok) return;
+        b.disabled = true;
+        try {
+          var r = await POST('/api/quizzes/' + b.getAttribute('data-startqz') + '/start', {});
+          toast('Quiz started — ' + r.started + ' student' + (r.started === 1 ? '' : 's') + ' writing now');
+          loadClassPage();
+        } catch (err) { toast(err.message, 'bad'); b.disabled = false; }
       };
     });
   }

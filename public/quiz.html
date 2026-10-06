@@ -30,6 +30,14 @@
 <div class="container">
   <div id="tabwarn" class="tabwarn" hidden></div>
 
+  <div class="card waitcard" id="waitCard" hidden>
+    <div class="eico" id="waitIco"></div>
+    <h2>Waiting for teacher to start</h2>
+    <p class="muted" id="waitTxt"></p>
+    <div class="waitdots"><i></i><i></i><i></i></div>
+    <p class="small muted">You are checked in. Keep this page open — the quiz begins for everyone at the same time and your timer starts then.</p>
+  </div>
+
   <div class="qwrap">
     <div class="palette" id="palette"></div>
 
@@ -74,9 +82,33 @@
     setTimeout(function () { location.href = 'dashboard.html'; }, 1200);
     return;
   }
+  while (data.attempt.status === 'waiting') { // checked in — waiting for the teacher to start
+    paintWaiting(data.quiz);
+    await new Promise(function (r) { setTimeout(r, 2500); });
+    try { data = await GET('/api/attempts/' + attemptId); }
+    catch (err) { toast(err.message, 'bad'); setTimeout(function () { location.href = 'dashboard.html'; }, 1200); return; }
+  }
+  endWaiting();
   if (data.attempt.status !== 'in_progress') {
     location.href = 'result.html?attempt=' + attemptId;
     return;
+  }
+
+  function paintWaiting(qz) {
+    document.getElementById('waitCard').hidden = false;
+    document.getElementById('qTitle').textContent = qz.title;
+    document.getElementById('qMeta').textContent = qz.subject;
+    document.getElementById('waitTxt').textContent = qz.title + ' · ' + qz.subject;
+    if (!document.getElementById('waitIco').innerHTML) document.getElementById('waitIco').innerHTML = icon('clock', 36);
+    document.querySelector('.qwrap').style.visibility = 'hidden';
+    var pal = document.getElementById('palette');
+    if (pal) pal.style.visibility = 'hidden';
+  }
+  function endWaiting() {
+    document.getElementById('waitCard').hidden = true;
+    document.querySelector('.qwrap').style.visibility = '';
+    var pal = document.getElementById('palette');
+    if (pal) pal.style.visibility = '';
   }
 
   var A = data.attempt, quiz = data.quiz, questions = data.questions;

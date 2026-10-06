@@ -406,6 +406,17 @@ input[type=datetime-local]::-webkit-calendar-picker-indicator:hover { opacity: .
 .quiz-top { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #e8eaed; padding: 12px 0; }
 .qwrap { max-width: 880px; margin: 26px auto; }
 @media (max-width: 900px) { .qwrap { margin-left: 0; margin-right: 0; } }
+
+/* quiz lobby — waiting for the teacher to start */
+.waitcard { text-align: center; padding: 48px 24px; margin-bottom: 18px; }
+.waitcard .eico { color: #1a73e8; }
+.waitcard h2 { font-size: 21px; margin: 10px 0 6px; }
+.waitcard .muted { margin: 0; }
+.waitdots { display: inline-flex; gap: 7px; margin: 18px 0 14px; }
+.waitdots i { width: 9px; height: 9px; border-radius: 50%; background: #1a73e8; opacity: .25; animation: waitPulse 1.2s infinite; }
+.waitdots i:nth-child(2) { animation-delay: .2s; }
+.waitdots i:nth-child(3) { animation-delay: .4s; }
+@keyframes waitPulse { 0%, 100% { opacity: .25; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.1); } }
 .timer {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 20px; font-weight: 800; padding: 7px 15px; border-radius: 8px;

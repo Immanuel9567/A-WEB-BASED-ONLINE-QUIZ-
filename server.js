@@ -44,7 +44,8 @@ function meta(q) { // safe quiz summary (no answers involved)
     shuffle: !!q.shuffle, shuffleOptions: !!q.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(q.tabSwitchPolicy) ? q.tabSwitchPolicy : 'warn',
     published: !!q.published, createdAt: q.createdAt, classes: quizClassIds(q),
-    courseIds: courseIdsOf(q)
+    courseIds: courseIdsOf(q),
+    startedAt: q.startedAt || null
   };
 }
 function publicQuestion(q) { // what a student may see BEFORE grading
@@ -266,6 +267,7 @@ function notifySubmission(quiz, a, type) {
 /** Background sweeper: auto-grade attempts whose time has expired.
     This is what makes results "process in real time" even if a student
     closes the browser without submitting. */
+const isDone = (a) => a.status !== 'in_progress' && a.status !== 'waiting'; // a finished, graded attempt
 function expireStale() {
   let changed = false;
   for (const a of db.attempts) {
@@ -277,6 +279,14 @@ function expireStale() {
       changed = true;
     }
   }
+  // waiting room: a student whose quiz window closed never sat the test — release the hold
+  const keep = db.attempts.filter((a) => {
+    if (a.status !== 'waiting') return true;
+    const q = byId(db.quizzes, a.quizId);
+    return !(q && q.closesAt && now() > q.closesAt);
+  });
+  if (keep.length !== db.attempts.length) changed = true;
+  db.attempts = keep;
   if (changed) saveDb();
 }
 setInterval(() => { try { expireStale(); } catch (e) { /* keep alive */ } }, 10000).unref();
@@ -412,7 +422,7 @@ function studentStat(u, teacher) { // aggregate performance for one student acro
     const q = byId(db.quizzes, a.quizId);
     return q && (!teacher || ownsQuiz(teacher, q));
   });
-  const done = atts.filter((a) => a.status !== 'in_progress');
+  const done = atts.filter(isDone);
   const last = done.length ? Math.max(...done.map((a) => a.submittedAt || a.startedAt)) : null;
   return {
     id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
@@ -494,9 +504,9 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
   const qs = db.questions[q.id] || [];
   const live = qs.filter((x) => !x.draft);
   const atts = db.attempts.filter((a) => a.quizId === q.id);
-  const done = atts.filter((a) => a.status !== 'in_progress');
+  const done = atts.filter(isDone);
   const mine = atts.filter((a) => a.userId === user.id);
-  const myDone = mine.filter((a) => a.status !== 'in_progress');
+  const myDone = mine.filter(isDone);
   const inprog = mine.find((a) => a.status === 'in_progress');
   return Object.assign(meta(q), {
     opensAt: q.opensAt || null, closesAt: q.closesAt || null,
@@ -513,6 +523,8 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
     bestPercent: myDone.length ? Math.max(...myDone.map((a) => a.percent)) : null,
     bestPassed: myDone.length ? myDone.some((a) => a.passed) : null,
     inProgressAttemptId: inprog ? inprog.id : null,
+    waitingCount: atts.filter((a) => a.status === 'waiting').length,
+    waitingAttemptId: (mine.find((a) => a.status === 'waiting') || {}).id || null,
     latestAttemptId: myDone.length ? myDone[myDone.length - 1].id : null
   });
 }
@@ -690,6 +702,9 @@ route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res })
   quiz.courseIds = nextCourseIds;
   delete quiz.courseId;
   quiz.classes = nextClasses;
+  if (wasPublished && !quiz.published) { // pulled back — release everyone sitting in the waiting room
+    db.attempts = db.attempts.filter((a) => !(a.quizId === quiz.id && a.status === 'waiting'));
+  }
   if (!wasPublished && quiz.published) notifyQuizPublished(quiz, user);
   saveDb();
   send(res, 200, { quiz: meta(quiz) });
@@ -742,9 +757,16 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   }
   const existing = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'in_progress');
   if (existing) return send(res, 200, attemptPayload(existing)); // resume
-  const myDone = db.attempts.filter((a) => a.userId === user.id && a.quizId === quiz.id && a.status !== 'in_progress');
+  const waiting = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'waiting');
+  if (waiting) return send(res, 200, { attempt: { id: waiting.id, status: 'waiting' }, quiz: meta(quiz), serverNow: now() });
+  const myDone = db.attempts.filter((a) => a.userId === user.id && a.quizId === quiz.id && isDone(a));
   if (myDone.length >= quiz.attemptsAllowed) {
     return send(res, 409, { error: `Attempt limit reached (${myDone.length}/${quiz.attemptsAllowed}).` });
+  }
+  // synchronized start (enforced): before the teacher starts, a first entry joins the waiting room;
+  // after the start nobody new can join — only students who already sat the quiz may retake
+  if (quiz.startedAt && !myDone.length) {
+    return send(res, 403, { error: 'This quiz has already started — join is closed.' });
   }
   let order = qs.map((q) => q.id);
   if (quiz.shuffle) { // Fisher–Yates shuffle — per-attempt question order
@@ -768,6 +790,15 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
       }
     }
   }
+  if (!quiz.startedAt) { // waiting room — the teacher starts everyone at the same moment
+    const w = {
+      id: uid('a'), quizId: quiz.id, userId: user.id, startedAt: null, endsAt: null, status: 'waiting',
+      answers: {}, tabSwitches: 0, questionOrder: order, optionOrder
+    };
+    db.attempts.push(w);
+    saveDb();
+    return send(res, 201, { attempt: { id: w.id, status: 'waiting' }, quiz: meta(quiz), serverNow: now() });
+  }
   const a = {
     id: uid('a'), quizId: quiz.id, userId: user.id, startedAt: now(),
     // the attempt also expires when the quiz window closes, whichever comes first
@@ -785,6 +816,9 @@ route('GET', '/api/attempts/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
   if (!a) return send(res, 404, { error: 'Attempt not found.' });
   if (user.role !== 'teacher' && a.userId !== user.id) return send(res, 403, { error: 'Not your attempt.' });
   const quiz = byId(db.quizzes, a.quizId);
+  if (a.status === 'waiting') { // lobby poll: waiting for the teacher to start
+    return send(res, 200, { attempt: { id: a.id, status: 'waiting' }, quiz: meta(quiz), serverNow: now() });
+  }
   if (a.status === 'in_progress') {
     if (user.role === 'teacher') {
       return send(res, 200, { attempt: { id: a.id, status: a.status }, quiz: meta(quiz), serverNow: now() });
@@ -884,7 +918,7 @@ route('GET', '/api/me/attempts', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   expireStale();
   const rows = db.attempts
-    .filter((a) => a.userId === user.id)
+    .filter((a) => a.userId === user.id && a.status !== 'waiting') // waiting holds are not results
     .map((a) => ({
       id: a.id, quizId: a.quizId, quizTitle: (byId(db.quizzes, a.quizId) || {}).title || '(deleted quiz)',
       status: a.status, score: a.score, maxScore: a.maxScore, percent: a.percent, passed: a.passed,
@@ -895,6 +929,27 @@ route('GET', '/api/me/attempts', async ({ user, res }) => {
 });
 
 /* ======== MONITORING / ANALYTICS (teacher) ======== */
+route('POST', '/api/quizzes/([A-Za-z0-9_]+)/start', async ({ user, params, res }) => {
+  if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  expireStale();
+  const quiz = byId(db.quizzes, params[0]);
+  if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
+  if (!quiz.published) return send(res, 400, { error: 'Publish the quiz first.' });
+  if (quiz.startedAt) return send(res, 400, { error: 'This quiz has already been started.' });
+  const waiting = db.attempts.filter((a) => a.quizId === quiz.id && a.status === 'waiting');
+  if (!waiting.length) return send(res, 400, { error: 'No students are waiting yet — students enter the quiz first, then you start it.' });
+  const t = now();
+  for (const a of waiting) {
+    a.status = 'in_progress';
+    a.startedAt = t;
+    a.endsAt = Math.min(t + quiz.durationMin * 60000, quiz.closesAt || Infinity);
+  }
+  quiz.startedAt = t; // the gate closes: nobody else can join
+  saveDb();
+  send(res, 200, { started: waiting.length, startedAt: t });
+});
+
 route('GET', '/api/quizzes/([A-Za-z0-9_]+)/monitor', async ({ user, params, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   expireStale();
@@ -907,21 +962,22 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/monitor', async ({ user, params, res 
     const answered = Object.values(a.answers || {}).filter((v) => v !== null && v !== undefined).length;
     return {
       id: a.id, student: u.name, status: a.status, answered, total: qs.length, endsAt: a.endsAt,
-      percent: a.status !== 'in_progress' ? a.percent : null,
-      passed: a.status !== 'in_progress' ? a.passed : null,
-      score: a.status !== 'in_progress' ? (a.score + '/' + a.maxScore) : null,
+      percent: isDone(a) ? a.percent : null,
+      passed: isDone(a) ? a.passed : null,
+      score: isDone(a) ? (a.score + '/' + a.maxScore) : null,
       durationUsedSec: a.durationUsedSec || null, submittedAt: a.submittedAt || null,
       tabSwitches: a.tabSwitches || 0
     };
-  }).sort((x, y) => (x.status === 'in_progress' ? 0 : 1) - (y.status === 'in_progress' ? 0 : 1) || (y.percent ?? -1) - (x.percent ?? -1));
-  const done = atts.filter((a) => a.status !== 'in_progress');
+  }).sort((x, y) => ((x.status === 'in_progress' || x.status === 'waiting') ? 0 : 1) - ((y.status === 'in_progress' || y.status === 'waiting') ? 0 : 1) || (y.percent ?? -1) - (x.percent ?? -1));
+  const done = atts.filter(isDone);
   const notStarted = db.users
     .filter((u) => u.role === 'student' && !atts.some((a) => a.userId === u.id))
     .map((u) => u.name);
   send(res, 200, {
     quiz: meta(quiz), serverNow: now(),
     summary: {
-      total: atts.length, inProgress: atts.length - done.length,
+      total: atts.length, inProgress: atts.filter((a) => a.status === 'in_progress').length,
+      waiting: atts.filter((a) => a.status === 'waiting').length,
       submitted: done.filter((a) => a.status === 'submitted').length,
       expired: done.filter((a) => a.status === 'expired').length,
       avgPercent: done.length ? Math.round(done.reduce((s, a) => s + a.percent, 0) / done.length * 10) / 10 : null
@@ -937,7 +993,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/attempts', async ({ user, params, res
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
   if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const rows = db.attempts
-    .filter((a) => a.quizId === quiz.id && a.status !== 'in_progress')
+    .filter((a) => a.quizId === quiz.id && isDone(a))
     .map((a) => ({
       id: a.id, student: (byId(db.users, a.userId) || { name: 'Unknown' }).name,
       status: a.status, score: a.score, maxScore: a.maxScore, percent: a.percent, passed: a.passed,
@@ -954,7 +1010,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
   if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const qs = (db.questions[quiz.id] || []).filter((q) => !q.draft);
-  const done = db.attempts.filter((a) => a.quizId === quiz.id && a.status !== 'in_progress');
+  const done = db.attempts.filter((a) => a.quizId === quiz.id && isDone(a));
 
   // score distribution (5 bands)
   const bands = [0, 0, 0, 0, 0];
@@ -1022,7 +1078,7 @@ route('GET', '/api/students', async ({ user, res }) => {
   const students = db.users
     .filter((u) => u.role === 'student' && myStudentIds.has(u.id))
     .map((u) => {
-      const mine = db.attempts.filter((a) => a.userId === u.id && a.status !== 'in_progress' && myQuizIds.has(a.quizId));
+      const mine = db.attempts.filter((a) => a.userId === u.id && isDone(a) && myQuizIds.has(a.quizId));
       const quizIds = [...new Set(mine.map((a) => a.quizId))];
       return {
         id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,

@@ -238,7 +238,7 @@
       item('create', 'builder.html?new=1', 'plus', 'Create quiz')
     ] : [
       item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
-      item('results', 'dashboard.html#results', 'fileText', 'My results')
+      item('results', 'results.html', 'fileText', 'My results')
     ];
 
     document.body.classList.remove('sb-open'); // drawer never survives a re-render
