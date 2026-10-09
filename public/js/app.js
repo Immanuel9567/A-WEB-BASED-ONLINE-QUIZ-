@@ -61,6 +61,8 @@
     volumeX: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
     chevronsLeft: '<polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>',
     menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    moreH: '<circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
     arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
     arrowDown: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'
@@ -69,6 +71,19 @@
     var s = size || 18;
     return '<svg class="ic" width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
       'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || P.info) + '</svg>';
+  };
+
+  /* ---------------- brand mark + stat card (shared design components) ----- */
+  var BRANDMARK = '<span class="brand-mark">' + icon('check', 17) + '</span>';
+  window.statCard = function (ic, num, lbl, sub, variant, href) {
+    var inner =
+      '<span class="sicon' + (variant ? ' ' + variant : '') + '">' + icon(ic, 18) + '</span>' +
+      '<span class="stxt">' +
+      '<span class="num">' + num + '</span>' +
+      '<span class="lbl">' + lbl + '</span>' +
+      (sub ? '<small class="ssub">' + sub + '</small>' : '') +
+      '</span>';
+    return href ? '<a class="stat" href="' + href + '">' + inner + '</a>' : '<div class="stat">' + inner + '</div>';
   };
 
   /* ---------------- token storage (localStorage w/ safe fallback) --------- */
@@ -215,8 +230,6 @@
   };
 
   /* ---------------- sidebar (+ teacher notification bell) ----------------- */
-  var LOGO = '<svg width="28" height="28" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
   var navUser = null, navActive = null;
   window.navbar = function (user, active) {
     var el = document.getElementById('nav');
@@ -240,24 +253,30 @@
       item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
       item('results', 'results.html', 'fileText', 'My results')
     ];
+    function bn(key, href, ic, label) {
+      return '<a class="' + (active === key ? 'on' : '') + '" href="' + href + '">' + icon(ic, 19) + '<span>' + label + '</span></a>';
+    }
+    var bottom = isTeacher ? [
+      bn('dashboard', 'teacher.html', 'home', 'Home'),
+      bn('classes', 'classes.html', 'bookOpen', 'Classes'),
+      bn('students', 'students.html', 'users', 'Students'),
+      '<a class="' + (active === 'create' ? 'on' : '') + '" href="builder.html?new=1">' +
+        '<span class="bn-create">' + icon('plus', 16) + '</span><span>Create</span></a>'
+    ] : [
+      bn('dashboard', 'dashboard.html', 'home', 'Home'),
+      bn('results', 'results.html', 'fileText', 'Results'),
+      '<a href="#" id="bnMenu">' + icon('menu', 19) + '<span>Menu</span></a>'
+    ];
 
     document.body.classList.remove('sb-open'); // drawer never survives a re-render
 
     el.innerHTML =
-      '<header class="m-top">' +
-      '<button class="iconbtn" id="sbMenu" title="Menu" aria-label="Open menu">' + icon('menu', 21) + '</button>' +
-      '<a class="brand" href="' + home + '" title="ClassMark home">' + LOGO + '<span>ClassMark</span></a>' +
-      '<div class="bellwrap" style="margin-left:auto"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
-      icon('bell', 20) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
-      '</header>' +
       '<aside class="sidebar">' +
       '<div class="sb-head">' +
-      '<a class="brand" href="' + home + '" title="ClassMark home">' + LOGO + '<span>ClassMark</span></a>' +
-      '<div class="bellwrap"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
-      icon('bell', 20) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
+      '<a class="brand" href="' + home + '" title="ClassMark home">' + BRANDMARK + '<span>ClassMark</span></a>' +
       '<button class="iconbtn sb-toggle" id="sbToggle" title="Collapse menu" aria-label="Collapse menu">' + icon('chevronsLeft', 18) + '</button>' +
       '</div>' +
-      '<div class="sb-label">Menu</div>' +
+      '<div class="sb-label">Workspace</div>' +
       '<nav class="sb-nav">' + links.join('') + '</nav>' +
       '<div class="sb-label" id="sbClassLbl" hidden></div>' +
       '<nav class="sb-nav" id="sbClassNav"></nav>' +
@@ -266,9 +285,19 @@
       '<span class="avatar">' + esc(initials) + '</span>' +
       '<span class="utxt"><b>' + esc(user.name) + '</b>' +
       '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span></button>' +
-      '<button class="btn ghost sm" id="navLogout">' + icon('logout', 15) + '<span class="lbl">Log out</span></button>' +
+      '<button class="logout" id="navLogout">' + icon('logout', 15) + '<span class="lbl">Log out</span></button>' +
       '</div>' +
       '</aside>' +
+      '<header class="topbar">' +
+      '<button class="iconbtn tb-menu" id="sbMenu" title="Menu" aria-label="Open menu">' + icon('menu', 20) + '</button>' +
+      '<a class="tb-brand" href="' + home + '" title="ClassMark home">' + BRANDMARK + '<span>ClassMark</span></a>' +
+      '<div class="topbar-actions">' +
+      '<div class="bellwrap"><button class="iconbtn" data-bell title="Notifications" aria-label="Notifications">' +
+      icon('bell', 19) + '<span class="belldot" data-bell-dot hidden></span></button></div>' +
+      '<button class="top-avatar" id="topAvatar" title="Edit profile">' + esc(initials) + '</button>' +
+      '</div>' +
+      '</header>' +
+      '<nav class="bottom-nav" aria-label="Mobile navigation">' + bottom.join('') + '</nav>' +
       '<div class="sb-backdrop" id="sbBackdrop"></div>' +
       '<div class="notifpanel" id="notifPanel" hidden></div>';
 
@@ -285,6 +314,14 @@
         if (u) navbar(u, navActive); // re-render sidebar with the new name — no page refresh
       });
     };
+    var topAvatar = document.getElementById('topAvatar');
+    if (topAvatar) topAvatar.onclick = function () {
+      editProfile(navUser).then(function (u) {
+        if (u) navbar(u, navActive);
+      });
+    };
+    var bnMenu = document.getElementById('bnMenu');
+    if (bnMenu) bnMenu.onclick = function (e) { e.preventDefault(); document.body.classList.add('sb-open'); };
 
     fillSidebarClasses(user);
     setupBell(user);

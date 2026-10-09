@@ -51,17 +51,14 @@
   var mine = data.attempts.filter(function (a) { return a.status !== 'in_progress' && a.status !== 'waiting'; });
 
   /* ---- summary cards ---- */
-  function stat(num, lbl, accent) {
-    return '<div class="stat' + (accent ? ' accent' : '') + '"><div class="num">' + num + '</div><div class="lbl">' + lbl + '</div></div>';
-  }
   var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
   var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
   var passes = mine.filter(function (a) { return a.passed; }).length;
   document.getElementById('stats').innerHTML =
-    stat(mine.length, 'Attempts submitted') +
-    stat(fmtPct(avg), 'My average score', true) +
-    stat(fmtPct(best), 'My best score') +
-    stat(passes + '/' + mine.length, 'Passed');
+    statCard('clipboardCheck', mine.length, 'Attempts submitted') +
+    statCard('award', fmtPct(avg), 'My average score', '', 'accent') +
+    statCard('trophy', fmtPct(best), 'My best score', '', 'mint') +
+    statCard('checkCircle', passes + '/' + mine.length, 'Passed', 'attempts that met the pass mark');
 
   /* ---- history table ---- */
   var rEl = document.getElementById('resultsBody');

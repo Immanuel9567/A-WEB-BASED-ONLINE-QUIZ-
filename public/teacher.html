@@ -14,35 +14,69 @@
 <main class="container">
   <section class="pagehead">
     <div>
-      <h1>Teacher dashboard</h1>
-      <p class="sub" id="welcome">Loading…</p>
+      <span class="eyebrow">Teacher workspace</span>
+      <h1 id="welcome">Loading…</h1>
+      <p class="sub" id="welcomeSub">Build quizzes, monitor sessions live and review analytics.</p>
+    </div>
+    <div class="headactions">
+      <button class="btn" id="headCreateClass"></button>
+      <a class="btn primary" href="builder.html?new=1" id="headCreateQuiz"></a>
     </div>
   </section>
 
   <section class="statgrid" id="stats"></section>
 
-  <section class="card tight" id="classCard"><p class="small muted skeleton">Loading…</p></section>
+  <div class="dashboard-grid">
+    <section class="card quiz-panel" style="padding:0;overflow:hidden">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow" style="color:var(--faint)">Assessment library</span>
+          <h2>My quizzes</h2>
+        </div>
+      </div>
+      <div class="quiz-tools">
+        <div class="qz-search"><span class="qs-ic" id="qsIco"></span><input id="qzSearch" type="text" placeholder="Search quizzes" autocomplete="off"></div>
+        <select id="qzClassFilter" class="qz-select" title="Filter by class"></select>
+        <button type="button" class="status-toggle" id="statusToggle"></button>
+        <select id="qzSort" class="qz-select" title="Sort quizzes" style="width:150px">
+          <option value="newest">Newest first</option>
+          <option value="title">Title A–Z</option>
+          <option value="questions">Most questions</option>
+          <option value="duration">Longest duration</option>
+          <option value="attempts">Most attempts</option>
+        </select>
+      </div>
+      <div class="quiz-list" id="quizList">
+        <div class="empty"><div class="eico" id="loadIco"></div><span class="skeleton">Loading…</span></div>
+      </div>
+    </section>
 
-  <div class="row qzbar">
-    <h2 class="sec" style="margin:0">My quizzes</h2>
-    <span class="spacer"></span>
-    <div class="qz-search"><span class="qs-ic" id="qsIco"></span><input id="qzSearch" type="text" placeholder="Search quizzes" autocomplete="off"></div>
-    <select id="qzClassFilter" style="width:200px" title="Filter by class"></select>
+    <aside class="right-column">
+      <section class="card classes-panel" style="padding:0;overflow:hidden">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow" style="color:var(--faint)">Quick access</span>
+            <h2>My classes</h2>
+          </div>
+          <button class="iconbtn subtle" id="clsNew" title="Create a class" aria-label="Create a class"></button>
+        </div>
+        <div id="clsNewRow" hidden style="padding:0 16px 14px">
+          <div class="field" style="margin:0">
+            <label for="clsName">New class name</label>
+            <div class="row" style="flex-wrap:nowrap">
+              <input id="clsName" type="text" placeholder="Class name" autocomplete="off" style="flex:1;min-width:0">
+              <button class="btn primary" id="clsGo"></button>
+              <button class="btn" id="clsCancelNew">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div class="class-list" id="classList"></div>
+        <div style="padding:14px">
+          <a class="secondary-button" href="classes.html" id="manageAll"></a>
+        </div>
+      </section>
+    </aside>
   </div>
-  <section class="card tablecard">
-    <table>
-      <thead><tr>
-        <th>Quiz</th>
-        <th id="statusTh" class="sortable">Status <span class="sarr"></span></th>
-        <th class="sortable" data-k="questions">Questions <span class="sarr"></span></th>
-        <th class="sortable" data-k="duration">Duration <span class="sarr"></span></th>
-        <th class="sortable" data-k="pass">Pass <span class="sarr"></span></th>
-        <th class="sortable" data-k="attempts">Attempts <span class="sarr"></span></th>
-        <th>Average</th><th style="text-align:right">Actions</th>
-      </tr></thead>
-      <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
-    </table>
-  </section>
 </main>
 
 <script src="js/app.js"></script>
@@ -50,19 +84,31 @@
 (async function () {
   var user = await requireLogin('teacher');
   navbar(user, 'dashboard');
+  var h = new Date().getHours();
   document.getElementById('welcome').textContent =
-    'Welcome, ' + user.name + ' — build quizzes, monitor sessions live and review analytics.';
+    (h < 12 ? 'Good morning, ' : h < 17 ? 'Good afternoon, ' : 'Good evening, ') + user.name.split(' ')[0];
+  document.getElementById('headCreateClass').innerHTML = icon('plus', 15) + ' Create class';
+  document.getElementById('headCreateQuiz').innerHTML = icon('plus', 15) + ' Create quiz';
+  document.getElementById('qsIco').innerHTML = icon('search', 15);
+  document.getElementById('loadIco').innerHTML = icon('fileText', 34);
+  document.getElementById('clsNew').innerHTML = icon('plus', 17);
+  document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Create class';
+  document.getElementById('manageAll').innerHTML = 'Manage all classes ' + icon('chevronRight', 15);
 
-  var quizzes = [], students = [];
+  var quizzes = [], students = [], classes = [];
 
-  /* ---- stats + table re-render in place after every change — no page refresh ---- */
+  /* ---- everything re-renders in place after every change — no page refresh ---- */
   async function refresh() {
-    var results = await Promise.all([GET('/api/quizzes'), GET('/api/students')]);
+    var results = await Promise.all([GET('/api/quizzes'), GET('/api/students'), GET('/api/classes/mine')]);
     quizzes = results[0].quizzes;
-    students = results[1].students; // only students enrolled in my classes
+    students = results[1].students;   // only students enrolled in my classes
+    classes = results[2].classes || [];
     renderStats();
-    renderTable();
+    renderRows();
+    renderClasses();
+    paintClassFilter();
   }
+
   function renderStats() {
     var totalAttempts = quizzes.reduce(function (s, q) { return s + q.attemptCount; }, 0);
     var withAvg = quizzes.filter(function (q) { return q.avgPercent != null; });
@@ -70,70 +116,18 @@
       ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10
       : null;
     var t = Date.now();
-    var scheduled = quizzes.filter(function (q) { return q.published && q.opensAt && q.opensAt > t; }).length;
-    var expired = quizzes.filter(function (q) { return q.published && q.closesAt && q.closesAt <= t; }).length;
     var active = quizzes.filter(function (q) {
       return q.published && !(q.opensAt && q.opensAt > t) && !(q.closesAt && q.closesAt <= t);
     }).length;
     document.getElementById('stats').innerHTML =
-      st(quizzes.length, 'Quizzes created') +
-      st(active, 'Active quizzes') +
-      st(scheduled, 'Scheduled quizzes') +
-      st(expired, 'Expired quizzes') +
-      stLink(students.length, 'My students', 'students.html', 'View list') +
-      st(totalAttempts, 'Attempts') +
-      st(fmtPct(overallAvg), 'Average score', true);
-  }
-  function st(v, l, acc) {
-    return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
-  }
-  function stLink(v, l, href, action) {
-    return '<a class="stat" href="' + href + '"><div class="num">' + v + '</div><div class="lbl">' + l + ' &middot; ' + action + '</div></a>';
+      statCard('users', students.length, 'My students', 'across ' + classes.length + ' class' + (classes.length === 1 ? '' : 'es'), '', 'students.html') +
+      statCard('fileText', quizzes.length, 'Quizzes created', active + ' active now', 'mint') +
+      statCard('clipboardCheck', totalAttempts, 'Attempts graded', withAvg.length + ' quizzes scored', 'amber') +
+      statCard('award', fmtPct(overallAvg), 'Average score', 'across all attempts', 'accent');
   }
 
-  /* ---- table ---- */
-  var tb = document.getElementById('rows');
-  function renderTable() {
-    if (!quizzes.length) {
-      tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
-        'No quizzes yet — use Create quiz in the menu.</div></td></tr>';
-      return;
-    }
-    var list = quizzes.filter(function (q) {
-      if (qzCls && !(q.classInfo || []).some(function (c) { return c.id === qzCls; })) return false;
-      if (qzStatus && statusOf(q) !== qzStatus) return false;
-      if (qzSearch) {
-        var hay = (q.title + ' ' + q.subject + ' ' + (q.classInfo || []).map(function (c) { return c.name; }).join(' ')).toLowerCase();
-        if (hay.indexOf(qzSearch) < 0) return false;
-      }
-      return true;
-    });
-    if (qzSortKey) {
-      var get = SORT_KEYS[qzSortKey];
-      var m = qzSortDir === 1 ? -1 : 1;
-      list.sort(function (a, b) {
-        return (get(b) - get(a) || a.title.localeCompare(b.title)) * m;
-      });
-    }
-    paintSortArrows();
-    if (!list.length) {
-      tb.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="eico">' + icon('search', 30) + '</div>' +
-        'No quizzes match these filters.</div></td></tr>';
-      return;
-    }
-    tb.innerHTML = list.map(row).join('');
-    wire();
-  }
-
-  /* ---- my-quizzes toolbar: search, class filter, status popup, sorting ---- */
-  var qzSearch = '', qzCls = '', qzStatus = '';
-  var qzSortKey = '', qzSortDir = -1; // first click sorts biggest-first, second click reverses
-  var SORT_KEYS = {
-    questions: function (q) { return q.questionCount; },
-    duration: function (q) { return q.durationMin; },
-    pass: function (q) { return q.passMark; },
-    attempts: function (q) { return q.attemptCount; }
-  };
+  /* ---- toolbar state: search, class filter, status popup, sort ---- */
+  var qzSearch = '', qzCls = '', qzStatus = '', qzSortKey = 'newest';
   function statusOf(q) { // one status per quiz — matches the badge shown in the row
     var t = Date.now();
     if (!q.published) return 'draft';
@@ -141,18 +135,30 @@
     if (q.closesAt && t >= q.closesAt) return 'expired';
     return 'ongoing';
   }
-  document.getElementById('qsIco').innerHTML = icon('search', 15);
+  var STATUS_META = {
+    ongoing: { label: 'Ongoing', badge: 'ok' },
+    scheduled: { label: 'Scheduled', badge: 'info' },
+    expired: { label: 'Expired', badge: 'warn' },
+    draft: { label: 'Draft', badge: 'plain' }
+  };
   document.getElementById('qzSearch').oninput = function () {
     qzSearch = this.value.trim().toLowerCase();
-    renderTable();
+    renderRows();
   };
   var selQzCls = document.getElementById('qzClassFilter');
-  selQzCls.innerHTML = '<option value="">All classes</option>';
-  selQzCls.onchange = function () { qzCls = this.value; renderTable(); };
+  var selQzSort = document.getElementById('qzSort');
+  selQzCls.onchange = function () { qzCls = this.value; renderRows(); };
+  selQzSort.onchange = function () { qzSortKey = this.value; renderRows(); };
+  function paintClassFilter() {
+    selQzCls.innerHTML = '<option value="">All classes</option>' + classes.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+    }).join('');
+    if (classes.some(function (c) { return c.id === qzCls; })) selQzCls.value = qzCls;
+    else qzCls = '';
+  }
 
-  /* status filter — themed popup under the column title (fixed, so the table's
-     overflow-x scroll container can never clip it) */
-  var statusTh = document.getElementById('statusTh');
+  /* status filter — themed popup under the toggle (fixed, so it can never clip) */
+  var statusToggle = document.getElementById('statusToggle');
   var statusMenu = document.createElement('div');
   statusMenu.className = 'dd-menu qz-status-menu';
   statusMenu.setAttribute('role', 'listbox');
@@ -165,22 +171,23 @@
     { v: 'expired', l: 'Expired' },
     { v: 'draft', l: 'Draft' }
   ];
-  function paintStatusTh() {
-    statusTh.querySelector('.sarr').innerHTML = icon('chevronDown', 12);
-    statusTh.classList.toggle('on', !!qzStatus || !statusMenu.hidden);
+  function paintStatusToggle() {
+    var cur = STATUSES.find(function (s) { return s.v === qzStatus; }) || STATUSES[0];
+    statusToggle.innerHTML = icon('sliders', 15) + esc(cur.l) + icon('chevronDown', 14);
+    statusToggle.classList.toggle('on', !!qzStatus || !statusMenu.hidden);
   }
-  function closeStatusMenu() { statusMenu.hidden = true; paintStatusTh(); }
-  statusTh.onclick = function () {
+  function closeStatusMenu() { statusMenu.hidden = true; paintStatusToggle(); }
+  statusToggle.onclick = function () {
     if (statusMenu.hidden) {
       statusMenu.innerHTML = STATUSES.map(function (s) {
         return '<button type="button" class="dd-item' + (qzStatus === s.v ? ' on' : '') + '" data-st="' + s.v + '" role="option">' +
           '<span class="dd-txt">' + s.l + '</span>' + (qzStatus === s.v ? icon('check', 15) : '') + '</button>';
       }).join('');
-      var r = statusTh.getBoundingClientRect();
+      var r = statusToggle.getBoundingClientRect();
       statusMenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 200)) + 'px';
       statusMenu.style.top = (r.bottom + 6) + 'px';
       statusMenu.hidden = false;
-      paintStatusTh();
+      paintStatusToggle();
     } else closeStatusMenu();
   };
   statusMenu.addEventListener('click', function (e) {
@@ -188,158 +195,184 @@
     if (!b) return;
     qzStatus = b.getAttribute('data-st');
     closeStatusMenu();
-    renderTable();
+    renderRows();
   });
   document.addEventListener('click', function (e) {
-    if (!statusMenu.hidden && !statusTh.contains(e.target) && !statusMenu.contains(e.target)) closeStatusMenu();
+    if (!statusMenu.hidden && !statusToggle.contains(e.target) && !statusMenu.contains(e.target)) closeStatusMenu();
   }, true);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !statusMenu.hidden) closeStatusMenu(); });
   document.addEventListener('scroll', function () { if (!statusMenu.hidden) closeStatusMenu(); }, true);
-  paintStatusTh();
+  paintStatusToggle();
 
-  /* numeric column sorting */
-  $$('.tablecard th[data-k]').forEach(function (th) {
-    th.onclick = function () {
-      var k = th.getAttribute('data-k');
-      if (qzSortKey === k) qzSortDir = -qzSortDir;
-      else { qzSortKey = k; qzSortDir = -1; }
-      renderTable();
-    };
-  });
-  function paintSortArrows() {
-    $$('.tablecard th[data-k]').forEach(function (th) {
-      var on = th.getAttribute('data-k') === qzSortKey;
-      th.querySelector('.sarr').innerHTML = on ? icon(qzSortDir > 0 ? 'arrowUp' : 'arrowDown', 12) : '';
+  /* ---- the quiz list ---- */
+  var list = document.getElementById('quizList');
+  var SORTS = {
+    newest: function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0) || a.title.localeCompare(b.title); },
+    title: function (a, b) { return a.title.localeCompare(b.title); },
+    questions: function (a, b) { return b.questionCount - a.questionCount || a.title.localeCompare(b.title); },
+    duration: function (a, b) { return b.durationMin - a.durationMin || a.title.localeCompare(b.title); },
+    attempts: function (a, b) { return b.attemptCount - a.attemptCount || a.title.localeCompare(b.title); }
+  };
+  function renderRows() {
+    if (!quizzes.length) {
+      list.innerHTML = '<div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +
+        'No quizzes yet — create your first quiz.</div>';
+      return;
+    }
+    var rows = quizzes.filter(function (q) {
+      if (qzCls && !(q.classInfo || []).some(function (c) { return c.id === qzCls; })) return false;
+      if (qzStatus && statusOf(q) !== qzStatus) return false;
+      if (qzSearch) {
+        var hay = (q.title + ' ' + q.subject + ' ' + (q.classInfo || []).map(function (c) { return c.name; }).join(' ')).toLowerCase();
+        if (hay.indexOf(qzSearch) < 0) return false;
+      }
+      return true;
     });
-  }
-  try { await refresh(); }
-  catch (e) {
-    document.getElementById('rows').innerHTML =
-      '<tr><td colspan="8" class="muted">Could not load your quizzes — ' + esc(e.message) + '</td></tr>';
-  }
-
-  function winLabel(q) {
-    var t = Date.now();
-    if (q.opensAt && t < q.opensAt) return 'Opens ' + fmtWhen(q.opensAt);
-    if (q.closesAt && t > q.closesAt) return 'Closed ' + fmtWhen(q.closesAt);
-    if (q.closesAt) return 'Closes ' + fmtWhen(q.closesAt);
-    return 'Opens ' + fmtWhen(q.opensAt);
+    rows.sort(SORTS[qzSortKey] || SORTS.newest);
+    if (!rows.length) {
+      list.innerHTML = '<div class="empty"><div class="eico">' + icon('search', 30) + '</div>' +
+        'No quizzes match these filters.</div>';
+      return;
+    }
+    list.innerHTML = rows.map(row).join('');
+    wireRows();
   }
   function row(q) {
-    var qCell = '<b>' + esc(q.title) + '</b><br><span class="small muted">' + esc(q.subject) + '</span>';
-    if (q.draftCount > 0) qCell += ' <span class="chip">' + q.draftCount + ' draft' + (q.draftCount > 1 ? 's' : '') + '</span>';
-    (q.classInfo || []).forEach(function (c) {
-      qCell += ' <span class="chip classchip">' + (c.color ? '<span class="classdot" style="background:' + esc(c.color) + '"></span>' : '') + esc(c.name) + '</span>';
-    });
-    if (!(q.classInfo || []).length) qCell += ' <span class="chip">No class — students cannot see it</span>';
-    return '<tr>' +
-      '<td>' + qCell + '</td>' +
-      '<td>' + (q.published ? '<span class="badge ok">Published</span>' : '<span class="badge plain">Draft</span>') +
-        (q.opensAt || q.closesAt ? '<br><span class="small muted">' + winLabel(q) + '</span>' : '') + '</td>' +
-      '<td>' + q.questionCount + ' <span class="small muted">(' + q.totalPoints + ' pts)</span></td>' +
-      '<td>' + q.durationMin + ' min</td>' +
-      '<td>' + q.passMark + '%</td>' +
-      '<td>' + q.attemptCount + '</td>' +
-      '<td>' + (q.avgPercent != null ? '<b>' + fmtPct(q.avgPercent) + '</b>' : '—') + '</td>' +
-      '<td class="actions" style="text-align:right;white-space:nowrap">' +
-      '<a class="btn sm" href="builder.html?id=' + q.id + '">' + icon('edit', 14) + ' Questions</a>' +
-      '<a class="btn sm primary" href="insights.html?id=' + q.id + '">' + icon('barChart', 14) + ' View and manage</a>' +
-      '<button class="btn sm" data-pub="' + q.id + '">' + (q.published ? icon('globe', 14) + ' Unpublish' : icon('send', 14) + ' Publish') + '</button>' +
-      '<button class="btn sm danger" data-del="' + q.id + '">' + icon('trash', 14) + '</button>' +
-      '</td></tr>';
-  }
-
-  function wire() {
-    $$('[data-pub]').forEach(function (b) {
-      b.onclick = async function () {
-        b.disabled = true;
-        var q = quizzes.find(function (x) { return x.id === b.getAttribute('data-pub'); });
-        try {
-          var r = await PUT('/api/quizzes/' + q.id, { published: !q.published });
-          q.published = r.quiz.published;
-          toast(q.published ? 'Quiz published — students were notified' : 'Quiz unpublished — hidden from students');
-          renderStats();
-          renderTable();
-        } catch (err) { toast(err.message, 'bad'); b.disabled = false; }
-      };
-    });
-    $$('[data-del]').forEach(function (b) {
-      b.onclick = async function () {
-        var q = quizzes.find(function (x) { return x.id === b.getAttribute('data-del'); });
-        var ok = await confirmModal({
-          title: 'Delete "' + q.title + '"?',
-          body: 'This permanently removes the quiz, its questions and <b>' + q.attemptCount + '</b> attempt records.',
-          okText: 'Delete permanently', danger: true
-        });
-        if (!ok) return;
-        try {
-          await DEL('/api/quizzes/' + q.id);
-          toast('Quiz deleted');
-          quizzes = quizzes.filter(function (x) { return x.id !== q.id; });
-          renderStats();
-          renderTable();
-        } catch (err) { toast(err.message, 'bad'); }
-      };
-    });
-  }
-
-  /* ---- quick settings: create class, manage classes, codes with tap-to-copy ---- */
-  var classCard = document.getElementById('classCard');
-  async function loadClasses() {
-    try {
-      var d = await GET('/api/classes/mine');
-      var list = d.classes || [];
-      selQzCls.innerHTML = '<option value="">All classes</option>' + list.map(function (c) {
-        return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
-      }).join('');
-      if (list.some(function (c) { return c.id === qzCls; })) selQzCls.value = qzCls; else qzCls = '';
-      var rows = list.map(function (c) {
-        return '<div class="row clsrow" style="margin-bottom:10px">' +
-          (c.color ? '<span class="classdot big" style="background:' + esc(c.color) + '"></span>' : '') +
-          '<div style="flex:1;min-width:150px"><b>' + esc(c.name) + '</b>' +
-          '<div class="hintline">' + c.memberCount + ' member' + (c.memberCount === 1 ? '' : 's') + ' &middot; ' + c.courseCount + ' course' + (c.courseCount === 1 ? '' : 's') + '</div></div>' +
-          '<button class="btn sm" data-copy="' + esc(c.code) + '" title="Tap to copy the join code"><b class="mono codebig">' + esc(c.code) + '</b></button>' +
-          '<a class="btn sm primary" href="class.html?id=' + c.id + '">' + icon('chevronRight', 13) + ' Open</a>' +
-          '</div>';
-      }).join('');
-      classCard.innerHTML =
-        '<div class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:12px">' +
-        '<b style="font-size:16.5px">Quick settings</b><span class="spacer"></span>' +
-        '<button class="btn sm primary" id="clsNew">' + icon('plus', 14) + ' Create class</button>' +
-        (list.length > 1 ? '<a class="btn sm" href="classes.html">' + icon('sliders', 14) + ' Manage classes</a>' : '') +
-        '</div>' +
-        '<div class="row" id="clsNewRow" hidden style="margin-bottom:12px;gap:10px;flex-wrap:wrap">' +
-        '<input id="clsName" type="text" placeholder="New class name" style="flex:1;min-width:170px">' +
-        '<button class="btn primary" id="clsGo"></button>' +
-        '<button class="btn" id="clsCancelNew">Cancel</button>' +
-        '</div>' +
-        '<div class="small muted" style="margin:0 0 10px"><b>My classes</b></div>' +
-        (rows || '<p class="small muted" style="margin:0">No classes yet — create one above.</p>');
-      var newRow = document.getElementById('clsNewRow');
-      document.getElementById('clsNew').onclick = function () {
-        newRow.hidden = !newRow.hidden;
-        if (!newRow.hidden) document.getElementById('clsName').focus();
-      };
-      document.getElementById('clsCancelNew').onclick = function () { newRow.hidden = true; };
-      document.getElementById('clsGo').innerHTML = icon('plus', 15) + ' Create class';
-      document.getElementById('clsGo').onclick = async function () {
-        this.disabled = true;
-        try {
-          var r = await POST('/api/classes', { name: document.getElementById('clsName').value });
-          toast('Class created — share code ' + r.class.code + ' with your students');
-          loadClasses();
-        } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
-      };
-      $$('[data-copy]', classCard).forEach(function (b) {
-        b.onclick = function () { copyText(b.getAttribute('data-copy'), 'Class code copied'); };
-      });
-    } catch (err) {
-      classCard.innerHTML = '<p class="small muted">Could not load classes.</p>';
+    var st = STATUS_META[statusOf(q)];
+    var cls = q.classInfo || [];
+    var color = cls.length && cls[0].color ? cls[0].color : '';
+    var sub = esc(q.subject) + (cls.length
+      ? ' · ' + cls.map(function (c) { return esc(c.name); }).join(', ')
+      : ' · no class yet — students cannot see it');
+    if (q.draftCount > 0) sub += ' · ' + q.draftCount + ' draft' + (q.draftCount > 1 ? 's' : '');
+    var avg = q.avgPercent != null
+      ? '<strong>' + fmtPct(q.avgPercent) + '</strong>'
+      : '<span class="small muted">—</span>';
+    if (q.published && !q.startedAt && q.waitingCount) {
+      avg += '<span class="chip">' + icon('clock', 12) + ' ' + q.waitingCount + ' waiting</span>';
     }
+    return '<div class="quiz-row" data-qz="' + esc(q.id) + '">' +
+      '<span class="quiz-symbol"' + (color ? ' style="background:' + esc(color) + '"' : '') + '>' + icon('fileText', 16) + '</span>' +
+      '<div class="quiz-title"><strong>' + esc(q.title) + '</strong><span class="tsub">' + sub + '</span></div>' +
+      '<div class="quiz-data"><span>Questions</span><strong>' + q.questionCount + '</strong></div>' +
+      '<div class="quiz-data"><span>Duration</span><strong>' + q.durationMin + ' min</strong></div>' +
+      '<div class="quiz-data"><span>Attempts</span><strong>' + q.attemptCount + '</strong></div>' +
+      '<div class="quiz-score"><span>Average</span>' + avg + '</div>' +
+      '<span class="badge ' + st.badge + '">' + st.label + '</span>' +
+      '<button type="button" class="iconbtn subtle morebtn" data-more="' + esc(q.id) + '" aria-label="Quiz options">' + icon('moreH', 17) + '</button>' +
+      '</div>';
   }
-  loadClasses();
 
+  /* per-row options menu — fixed to the body so it never clips */
+  var moreMenu = document.createElement('div');
+  moreMenu.className = 'dd-menu qz-status-menu';
+  moreMenu.hidden = true;
+  document.body.appendChild(moreMenu);
+  var moreFor = null;
+  function closeMoreMenu() { moreMenu.hidden = true; moreFor = null; }
+  document.addEventListener('click', function (e) {
+    if (!moreMenu.hidden && !moreMenu.contains(e.target) && !(e.target.closest && e.target.closest('[data-more]'))) closeMoreMenu();
+  }, true);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !moreMenu.hidden) closeMoreMenu(); });
+  document.addEventListener('scroll', function () { if (!moreMenu.hidden) closeMoreMenu(); }, true);
+  function wireRows() {
+    $$('[data-more]', list).forEach(function (b) {
+      b.onclick = function () {
+        var q = quizzes.find(function (x) { return x.id === b.getAttribute('data-more'); });
+        if (!q) return;
+        moreFor = q;
+        moreMenu.innerHTML =
+          '<a class="dd-item" href="builder.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('edit', 15) + ' Questions</span></a>' +
+          '<a class="dd-item" href="insights.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('barChart', 15) + ' View and manage</span></a>' +
+          '<button type="button" class="dd-item" data-pub="' + esc(q.id) + '"><span class="dd-txt">' +
+            (q.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish') + '</span></button>' +
+          '<button type="button" class="dd-item danger" data-del="' + esc(q.id) + '"><span class="dd-txt">' + icon('trash', 15) + ' Delete quiz</span></button>';
+        var r = b.getBoundingClientRect();
+        moreMenu.style.left = Math.max(8, Math.min(r.left - 130, window.innerWidth - 210)) + 'px';
+        moreMenu.style.top = (r.bottom + 6) + 'px';
+        moreMenu.hidden = false;
+      };
+    });
+  }
+  moreMenu.addEventListener('click', async function (e) {
+    var pub = e.target.closest('[data-pub]');
+    var del = e.target.closest('[data-del]');
+    if (pub) {
+      var q = quizzes.find(function (x) { return x.id === pub.getAttribute('data-pub'); });
+      closeMoreMenu();
+      try {
+        var r = await PUT('/api/quizzes/' + q.id, { published: !q.published });
+        q.published = r.quiz.published;
+        toast(q.published ? 'Quiz published — students were notified' : 'Quiz unpublished — hidden from students');
+        refresh();
+      } catch (err) { toast(err.message, 'bad'); }
+    } else if (del) {
+      var qz = quizzes.find(function (x) { return x.id === del.getAttribute('data-del'); });
+      closeMoreMenu();
+      var ok = await confirmModal({
+        title: 'Delete "' + qz.title + '"?',
+        body: 'This permanently removes the quiz, its questions and <b>' + qz.attemptCount + '</b> attempt records.',
+        okText: 'Delete permanently', danger: true
+      });
+      if (!ok) return;
+      try {
+        await DEL('/api/quizzes/' + qz.id);
+        toast('Quiz deleted');
+        quizzes = quizzes.filter(function (x) { return x.id !== qz.id; });
+        refresh();
+      } catch (err) { toast(err.message, 'bad'); }
+    }
+  });
 
+  /* ---- classes rail: accent rows + tap-to-copy codes + inline create ---- */
+  function renderClasses() {
+    var box = document.getElementById('classList');
+    if (!classes.length) {
+      box.innerHTML = '<div class="empty" style="padding:26px 16px"><div class="eico">' + icon('bookOpen', 30) + '</div>' +
+        'No classes yet — create one and share its code.</div>';
+      return;
+    }
+    box.innerHTML = classes.map(function (c) {
+      return '<div class="class-row">' +
+        '<span class="class-accent"' + (c.color ? ' style="background:' + esc(c.color) + '"' : '') + '></span>' +
+        '<div><strong>' + esc(c.name) + '</strong>' +
+        '<span class="csub">' + c.memberCount + ' student' + (c.memberCount === 1 ? '' : 's') + ' · ' +
+        c.courseCount + ' course' + (c.courseCount === 1 ? '' : 's') + '</span></div>' +
+        '<button type="button" class="code-button" data-copy="' + esc(c.code) + '" data-open="' + esc(c.id) + '" title="Tap to copy the join code">' +
+        esc(c.code) + icon('copy', 13) + '</button>' +
+        '</div>';
+    }).join('');
+    $$('[data-copy]', box).forEach(function (b) {
+      b.onclick = function () { copyText(b.getAttribute('data-copy'), 'Class code copied'); };
+    });
+  }
+  var newRow = document.getElementById('clsNewRow');
+  document.getElementById('clsNew').onclick = function () {
+    newRow.hidden = !newRow.hidden;
+    if (!newRow.hidden) document.getElementById('clsName').focus();
+  };
+  document.getElementById('headCreateClass').onclick = function () {
+    newRow.hidden = false;
+    document.getElementById('clsName').focus();
+    newRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  document.getElementById('clsCancelNew').onclick = function () { newRow.hidden = true; };
+  document.getElementById('clsGo').onclick = async function () {
+    this.disabled = true;
+    try {
+      var r = await POST('/api/classes', { name: document.getElementById('clsName').value });
+      toast('Class created — share code ' + r.class.code + ' with your students');
+      newRow.hidden = true;
+      document.getElementById('clsName').value = '';
+      refresh();
+    } catch (err) { toast(err.message, 'bad'); this.disabled = false; }
+  };
+
+  try { await refresh(); }
+  catch (e) {
+    document.getElementById('quizList').innerHTML =
+      '<div class="empty">Could not load your quizzes — ' + esc(e.message) + '</div>';
+  }
 })().catch(function () {});
 </script>
 </body>

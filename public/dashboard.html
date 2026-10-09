@@ -57,14 +57,10 @@
   var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
   var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
   document.getElementById('stats').innerHTML =
-    stat(available.length, 'Quizzes open to me') +
-    stat(mine.length, 'Attempts submitted') +
-    stat(fmtPct(avg), 'My average score', true) +
-    stat(fmtPct(best), 'My best score');
-
-  function stat(num, lbl, accent) {
-    return '<div class="stat' + (accent ? ' accent' : '') + '"><div class="num">' + num + '</div><div class="lbl">' + lbl + '</div></div>';
-  }
+    statCard('zap', available.length, 'Quizzes open to me', 'click Enter to check in') +
+    statCard('clipboardCheck', mine.length, 'Attempts submitted') +
+    statCard('award', fmtPct(avg), 'My average score', '', 'accent') +
+    statCard('trophy', fmtPct(best), 'My best score', '', 'mint');
 
   /* ---- classes (join with a teacher's code) ------------------------------- */
   var clEl = document.getElementById('classesCard');

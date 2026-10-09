@@ -150,9 +150,9 @@
     var stBox = document.getElementById('stats');
     stBox.style.setProperty('--cc', cls && cls.color ? cls.color : '');
     stBox.innerHTML =
-      stat(list.length, 'Students enrolled', !!cls) +
-      stat(writing, 'Writing right now', !!cls) +
-      stat(fmtPct(avg), cls ? cls.name + ' average' : 'Average score', !!cls);
+      statCard('users', list.length, 'Students enrolled', cls ? 'in ' + cls.name : 'across my classes', '', '') +
+      statCard('activity', writing, 'Writing right now', 'live attempts in progress', 'mint') +
+      statCard('award', fmtPct(avg), cls ? cls.name + ' average' : 'Average score', '', 'accent');
 
     var tb = document.getElementById('rows');
     if (!students.length) {
@@ -207,10 +207,6 @@
     renderList();
   }
 
-  function stat(v, l, accent) {
-    return '<div class="stat' + (accent ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
-  }
-
   /* ================= detail view ================= */
   async function openHistory(id) {
     var stu = students.find(function (s) { return s.id === id; });
@@ -226,10 +222,10 @@
       var best = done.length ? Math.max.apply(null, done.map(function (a) { return a.percent; })) : null;
       var avg = done.length ? Math.round(done.reduce(function (t, a) { return t + a.percent; }, 0) / done.length * 10) / 10 : null;
       document.getElementById('dStats').innerHTML =
-        stat(r.attempts.length, 'Total attempts') +
-        stat(done.length, 'Graded attempts') +
-        stat(fmtPct(avg), 'Average score') +
-        stat(fmtPct(best), 'Best score', true);
+        statCard('clipboardCheck', r.attempts.length, 'Total attempts', '', '') +
+        statCard('checkCircle', done.length, 'Graded attempts', '', 'mint') +
+        statCard('award', fmtPct(avg), 'Average score', '', 'accent') +
+        statCard('trophy', fmtPct(best), 'Best score', '', 'mint');
 
       var tb = document.getElementById('dRows');
       if (!r.attempts.length) {

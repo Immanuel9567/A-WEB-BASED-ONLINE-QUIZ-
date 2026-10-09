@@ -193,14 +193,10 @@
     var withAvg = published.filter(function (q) { return q.avgPercent != null; });
     var clsAvg = withAvg.length ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10 : null;
     document.getElementById('stats').innerHTML =
-      stat(c.memberCount, 'Members') +
-      stat(published.length, 'Published quizzes') +
-      stat(d.quizzes.length, 'Total quizzes', true) +
-      stat(fmtPct(clsAvg), 'Class average');
-    function stat(v, l, acc) {
-      return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>';
-    }
-
+      statCard('users', c.memberCount, 'Members', 'students in this class', '', '') +
+      statCard('globe', published.length, 'Published quizzes', 'visible to students', 'mint') +
+      statCard('fileText', d.quizzes.length, 'Total quizzes', 'including drafts', 'amber') +
+      statCard('award', fmtPct(clsAvg), 'Class average', '', 'accent');
     renderCourses();
     renderQuizzes();
   }
