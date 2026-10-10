@@ -959,6 +959,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/monitor', async ({ user, params, res 
   expireStale();
   const quiz = byId(db.quizzes, params[0]);
   if (!quiz) return send(res, 404, { error: 'Quiz not found.' });
+  if (!ownsQuiz(user, quiz)) return send(res, 403, { error: 'This quiz belongs to another teacher.' });
   const qs = (db.questions[quiz.id] || []).filter((q) => !q.draft);
   const atts = db.attempts.filter((a) => a.quizId === quiz.id);
   const rows = atts.map((a) => {
@@ -974,8 +975,13 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/monitor', async ({ user, params, res 
     };
   }).sort((x, y) => ((x.status === 'in_progress' || x.status === 'waiting') ? 0 : 1) - ((y.status === 'in_progress' || y.status === 'waiting') ? 0 : 1) || (y.percent ?? -1) - (x.percent ?? -1));
   const done = atts.filter(isDone);
+  // only students who can actually see this quiz belong here — members of its classes, never everyone
+  const eligible = new Set();
+  for (const c of db.classes.filter((x) => quizClassIds(quiz).includes(x.id))) {
+    (c.studentIds || []).forEach((id) => eligible.add(id));
+  }
   const notStarted = db.users
-    .filter((u) => u.role === 'student' && !atts.some((a) => a.userId === u.id))
+    .filter((u) => u.role === 'student' && eligible.has(u.id) && !atts.some((a) => a.userId === u.id))
     .map((u) => u.name);
   send(res, 200, {
     quiz: meta(quiz), serverNow: now(),
