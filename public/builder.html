@@ -15,8 +15,9 @@
   <section class="pagehead col">
     <div class="row headactions">
       <a class="btn" href="teacher.html" id="backLink"></a>
-      <a class="btn primary" id="insightsLink" href="#"></a>
-      <button class="btn" id="pubBtn"></button>
+      <button class="btn" id="pubBtn" hidden></button>
+      <a class="btn primary" id="monBtn" hidden></a>
+      <button class="btn" id="setToggle" hidden></button>
     </div>
     <div>
       <h1 id="qzTitle">Question bank</h1>
@@ -31,11 +32,12 @@
         <div class="row" style="margin-bottom:10px">
           <b style="font-size:14.5px" id="setTitle">Quiz settings</b>
         </div>
+        <div class="reqbar" id="reqBar" hidden><i id="reqFill"></i></div>
         <div class="form-err" id="setErr" hidden></div>
         <div class="cgrid">
           <div>
             <div class="field">
-              <label for="qsTitle">Quiz title</label>
+              <label for="qsTitle">Quiz title <span class="req">*</span></label>
               <input id="qsTitle" type="text" placeholder="Quiz title">
             </div>
             <div class="field">
@@ -43,9 +45,12 @@
               <input id="qsSubject" type="text" placeholder="Subject">
             </div>
             <div class="field">
-              <label>Class &amp; course</label>
+              <label for="qsClass">Class</label>
               <select id="qsClass"></select>
-              <div class="row" id="crsChips" style="margin-top:8px;flex-wrap:wrap;gap:8px"></div>
+            </div>
+            <div class="field">
+              <label for="qsCourse">Course <span class="req">*</span></label>
+              <select id="qsCourse"></select>
               <div class="row" id="crsNewRow" hidden style="margin-top:8px;gap:10px;flex-wrap:wrap">
                 <input id="crsNewName" type="text" placeholder="New course name" style="flex:1;min-width:160px">
                 <button class="btn sm primary" id="crsNewBtn"></button>
@@ -57,7 +62,7 @@
             </div>
           </div>
           <div>
-            <div class="formrow f3">
+            <div class="formrow">
               <div class="field">
                 <label for="qsDur">Duration (min)</label>
                 <input id="qsDur" type="number" value="15" min="1" max="180">
@@ -65,10 +70,6 @@
               <div class="field">
                 <label for="qsPass">Pass mark (%)</label>
                 <input id="qsPass" type="number" value="50" min="0" max="100">
-              </div>
-              <div class="field">
-                <label for="qsAtt">Attempts allowed</label>
-                <input id="qsAtt" type="number" value="2" min="1" max="10">
               </div>
             </div>
             <div class="formrow">
@@ -124,8 +125,8 @@
       <div class="field">
         <label for="fType">Question type</label>
         <select id="fType">
-          <option value="single">Single choice (radio)</option>
-          <option value="multiple">Multiple response (checkboxes)</option>
+          <option value="single">Single choice</option>
+          <option value="multiple">Multiple response</option>
           <option value="truefalse">True / False</option>
         </select>
       </div>
@@ -178,9 +179,6 @@
         <button class="btn" id="saveDraftBtn" type="button"></button>
         <button class="btn primary" id="saveBtn" type="button">Save question</button>
       </div>
-      <p class="small muted" style="margin:12px 0 0">
-        Drafts are saved to the question bank but are never shown to students until you complete and save them properly.
-      </p>
     </section>
   </div>
   <p style="margin:26px 2px 50px"></p>
@@ -196,7 +194,6 @@
   var creating = !quizId; // no id = create a brand-new quiz
 
   document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + ' Quizzes';
-  document.getElementById('insightsLink').innerHTML = icon('barChart', 15) + ' View and manage';
   document.getElementById('saveSettings').innerHTML = icon(creating ? 'plus' : 'save', 14) + (creating ? ' Create quiz' : ' Save settings');
   document.getElementById('addOptBtn').innerHTML = icon('plus', 14) + ' Add option';
   document.getElementById('saveDraftBtn').innerHTML = icon('fileText', 14) + ' Save as draft';
@@ -214,7 +211,7 @@
     myCourses = crd.courses || [];
   } catch (err) {}
   var selClass = document.getElementById('qsClass');
-  var picked = {};          // course ids selected for the current class (tap chips to toggle)
+  var selCourse = document.getElementById('qsCourse');
   var extraCourseIds = [];  // courses of this quiz that live in other classes — kept as-is
   function fillClassSel(selectedId) {
     selClass.innerHTML = myClasses.map(function (c) {
@@ -224,31 +221,16 @@
   function coursesOfClass(classId) {
     return myCourses.filter(function (x) { return x.classId === classId; });
   }
-  function paintCourseChips() {
-    var el = document.getElementById('crsChips');
-    var list = coursesOfClass(selClass.value);
-    el.innerHTML = list.map(function (x) {
-      return '<button type="button" class="chip crschip' + (picked[x.id] ? ' on' : '') + '" data-crs="' + esc(x.id) + '" style="cursor:pointer">' +
-        (picked[x.id] ? icon('check', 13) : '') + esc(x.name) + '</button>';
-    }).join('') || '<span class="small muted">No courses in this class yet.</span>';
-    $$('.crschip', el).forEach(function (b) {
-      b.onclick = function () {
-        var id = b.getAttribute('data-crs');
-        if (picked[id]) delete picked[id]; else picked[id] = true;
-        paintCourseChips();
-      };
-    });
+  function fillCourseSel(classId, selectedId) {
+    var list = coursesOfClass(classId);
+    selCourse.innerHTML = list.map(function (x) {
+      return '<option value="' + esc(x.id) + '"' + (x.id === selectedId ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+    }).join('') || '<option value="">No courses in this class yet</option>';
+    document.getElementById('crsNewRow').hidden = !!list.length;
+    paintReq();
   }
-  function fillCourseChips(classId, preselectIds) {
-    picked = {};
-    var inClass = coursesOfClass(classId);
-    (preselectIds || []).forEach(function (id) {
-      if (inClass.some(function (x) { return x.id === id; })) picked[id] = true;
-    });
-    document.getElementById('crsNewRow').hidden = !!inClass.length;
-    paintCourseChips();
-  }
-  selClass.onchange = function () { extraCourseIds = []; fillCourseChips(selClass.value, null); };
+  selClass.onchange = function () { extraCourseIds = []; fillCourseSel(selClass.value, null); };
+  selCourse.addEventListener('change', paintReq);
   document.getElementById('crsNewBtn').innerHTML = icon('plus', 13) + ' Add course';
   document.getElementById('crsNewBtn').onclick = async function () {
     var btn = this;
@@ -257,23 +239,20 @@
       var r = await POST('/api/classes/' + selClass.value + '/courses', { name: document.getElementById('crsNewName').value });
       myCourses.push(r.course);
       document.getElementById('crsNewName').value = '';
-      picked[r.course.id] = true;
-      document.getElementById('crsNewRow').hidden = true;
-      paintCourseChips();
+      fillCourseSel(selClass.value, r.course.id);
       toast('Course created — ' + r.course.name);
     } catch (err) { toast(err.message, 'bad'); }
     btn.disabled = false;
   };
   fillClassSel(myClasses.length === 1 ? myClasses[0].id : null); // preselect the only class, if there is just one
-  fillCourseChips(selClass.value, null);
+  fillCourseSel(selClass.value, null);
 
   var quiz = null;
   var questions = [];
   if (creating) {
     document.getElementById('qzTitle').textContent = 'Create quiz';
-    document.getElementById('qzMeta').textContent = 'Set the basics below, create the quiz, then add your questions.';
-    document.getElementById('insightsLink').hidden = true;
-    document.getElementById('pubBtn').hidden = true;
+    document.getElementById('qzMeta').hidden = true;
+    document.getElementById('reqBar').hidden = false;
     document.getElementById('qlistCard').hidden = true;
     document.getElementById('editorCard').hidden = true;
     document.getElementById('bcWrap').classList.add('creating');
@@ -289,27 +268,59 @@
     document.getElementById('qzMeta').textContent =
       quiz.subject + ' · ' + quiz.durationMin + ' min · pass ' + quiz.passMark + '% · ' +
       (quiz.published ? 'published' : 'draft');
-    document.getElementById('insightsLink').href = 'insights.html?id=' + quizId;
     document.getElementById('qsTitle').value = quiz.title;
     document.getElementById('qsSubject').value = quiz.subject;
     document.getElementById('qsDesc').value = quiz.description || '';
     document.getElementById('qsDur').value = quiz.durationMin;
     document.getElementById('qsPass').value = quiz.passMark;
-    document.getElementById('qsAtt').value = quiz.attemptsAllowed;
     dtSet('qsOpens', quiz.opensAt);
     dtSet('qsCloses', quiz.closesAt);
     var qcs = myCourses.filter(function (x) { return (quiz.courseIds || []).indexOf(x.id) > -1; });
     if (qcs.length) {
       fillClassSel(qcs[0].classId);
-      fillCourseChips(qcs[0].classId, qcs.map(function (x) { return x.id; }));
+      fillCourseSel(qcs[0].classId, qcs[0].id);
       extraCourseIds = qcs.filter(function (x) { return x.classId !== qcs[0].classId; }).map(function (x) { return x.id; });
+    }
+    /* arriving straight from Create: land on the questions editor, settings one click away */
+    if (new URLSearchParams(location.search).get('add') === '1') {
+      document.getElementById('setCard').hidden = true;
+      var st = document.getElementById('setToggle');
+      st.hidden = false;
+      st.innerHTML = icon('sliders', 15) + ' Quiz settings';
+      st.onclick = function () {
+        var sc = document.getElementById('setCard');
+        sc.hidden = !sc.hidden;
+        st.innerHTML = icon(sc.hidden ? 'sliders' : 'x', 15) + (sc.hidden ? ' Quiz settings' : ' Close settings');
+        if (!sc.hidden) sc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      document.getElementById('fText').focus();
     }
   }
 
+  /* ================= required fields: progress bar red -> green ================= */
+  function paintReq() {
+    if (!creating) return;
+    var t = document.getElementById('qsTitle').value.trim();
+    var c = !!selCourse.value && coursesOfClass(selClass.value).some(function (x) { return x.id === selCourse.value; });
+    var n = (t ? 1 : 0) + (c ? 1 : 0);
+    var pct = Math.round(n / 2 * 100);
+    var fill = document.getElementById('reqFill');
+    fill.style.width = pct + '%';
+    fill.style.backgroundColor = 'hsl(' + Math.round(pct * 1.2) + ',72%,42%)';
+    document.getElementById('saveSettings').disabled = n < 2;
+  }
+  document.getElementById('qsTitle').addEventListener('input', paintReq);
+  paintReq();
+
   /* ================= publish toggle (edit mode) ================= */
   var pubBtn = document.getElementById('pubBtn');
+  var monBtn = document.getElementById('monBtn');
   function paintPub() {
+    pubBtn.hidden = false;
     pubBtn.innerHTML = quiz.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish';
+    monBtn.hidden = !quiz.published;
+    monBtn.innerHTML = icon('activity', 15) + ' Monitor students';
+    monBtn.href = 'insights.html?id=' + quizId;
   }
   pubBtn.onclick = async function () {
     pubBtn.disabled = true;
@@ -354,9 +365,9 @@
     var btn = this;
     var errBox = document.getElementById('setErr');
     errBox.hidden = true;
-    var courseIds = Object.keys(picked).concat(extraCourseIds);
+    var courseIds = (selCourse.value ? [selCourse.value] : []).concat(extraCourseIds);
     if (!courseIds.length) {
-      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick at least one course for this quiz — create one inside one of your classes first.</span>';
+      errBox.innerHTML = icon('alertCircle', 16) + '<span>Pick a course for this quiz.</span>';
       errBox.hidden = false;
       return;
     }
@@ -373,7 +384,6 @@
       description: document.getElementById('qsDesc').value,
       durationMin: Number(document.getElementById('qsDur').value),
       passMark: Number(document.getElementById('qsPass').value),
-      attemptsAllowed: Number(document.getElementById('qsAtt').value),
       shuffle: setShuffle.checked,
       shuffleOptions: setShuffleOpt.checked,
       tabSwitchPolicy: setTab.value,
@@ -385,7 +395,7 @@
       if (creating) {
         var r = await POST('/api/quizzes', payload);
         toast('Quiz created — now add your questions');
-        location.replace('builder.html?id=' + r.quiz.id);
+        location.replace('builder.html?id=' + r.quiz.id + '&add=1');
         return;
       }
       await PUT('/api/quizzes/' + quizId, payload);
@@ -446,7 +456,7 @@
     var drafts = questions.filter(function (q) { return q.draft; });
     var live = questions.filter(function (q) { return !q.draft; });
     document.getElementById('qCount').textContent =
-      live.length + ' live' + (drafts.length ? ' · ' + drafts.length + ' draft' + (drafts.length > 1 ? 's' : '') : '');
+      live.length + (drafts.length ? ' · ' + drafts.length + ' draft' + (drafts.length > 1 ? 's' : '') : '');
     var el = document.getElementById('qlist');
     if (!questions.length) {
       el.innerHTML = '<p class="muted small" style="padding:14px 4px">No questions yet. Use the form to add the first one.</p>';
@@ -574,10 +584,10 @@
   function restoreForm() {
     var raw = null;
     try { raw = Store.getItem(formKey); } catch (e) {}
-    if (!raw) return;
+    if (!raw) { resetForm(); return; } // fresh form: lay out the default option rows
     try {
       var f = JSON.parse(raw);
-      if (!f || (!f.text && !f.opts)) return;
+      if (!f || (!f.text && !f.opts)) { resetForm(); return; }
       fType.value = f.type || 'single';
       fText.value = f.text || '';
       fPoints.value = f.points || 1;

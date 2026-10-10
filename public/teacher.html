@@ -16,7 +16,6 @@
     <div>
       <span class="eyebrow">Teacher workspace</span>
       <h1 id="welcome">Loading…</h1>
-      <p class="sub" id="welcomeSub">Build quizzes, monitor sessions live and review analytics.</p>
     </div>
     <div class="headactions">
       <button class="btn" id="headCreateClass"></button>
@@ -86,7 +85,7 @@
   navbar(user, 'dashboard');
   var h = new Date().getHours();
   document.getElementById('welcome').textContent =
-    (h < 12 ? 'Good morning, ' : h < 17 ? 'Good afternoon, ' : 'Good evening, ') + user.name.split(' ')[0];
+    h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   document.getElementById('headCreateClass').innerHTML = icon('plus', 15) + ' Create class';
   document.getElementById('headCreateQuiz').innerHTML = icon('plus', 15) + ' Create quiz';
   document.getElementById('qsIco').innerHTML = icon('search', 15);
@@ -133,12 +132,14 @@
     if (!q.published) return 'draft';
     if (q.opensAt && t < q.opensAt) return 'scheduled';
     if (q.closesAt && t >= q.closesAt) return 'expired';
+    if (q.startedAt && !q.waitingCount && !q.liveCount) return 'completed'; // started and everyone finished
     return 'ongoing';
   }
   var STATUS_META = {
-    ongoing: { label: 'Ongoing', badge: 'ok' },
-    scheduled: { label: 'Scheduled', badge: 'info' },
-    expired: { label: 'Expired', badge: 'warn' },
+    ongoing: { label: 'Ongoing', badge: 'info' },
+    scheduled: { label: 'Scheduled', badge: 'warn' },
+    expired: { label: 'Expired', badge: 'bad' },
+    completed: { label: 'Completed', badge: 'ok' },
     draft: { label: 'Draft', badge: 'plain' }
   };
   document.getElementById('qzSearch').oninput = function () {
@@ -167,6 +168,7 @@
   var STATUSES = [
     { v: '', l: 'All statuses' },
     { v: 'ongoing', l: 'Ongoing' },
+    { v: 'completed', l: 'Completed' },
     { v: 'scheduled', l: 'Scheduled' },
     { v: 'expired', l: 'Expired' },
     { v: 'draft', l: 'Draft' }
@@ -283,7 +285,10 @@
         moreFor = q;
         moreMenu.innerHTML =
           '<a class="dd-item" href="builder.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('edit', 15) + ' Questions</span></a>' +
-          '<a class="dd-item" href="insights.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('barChart', 15) + ' View and manage</span></a>' +
+          '<a class="dd-item" href="insights.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('barChart', 15) + ' Enter</span></a>' +
+          (q.published
+            ? '<a class="dd-item" href="insights.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('activity', 15) + ' Monitor students</span></a>'
+            : '') +
           '<button type="button" class="dd-item" data-pub="' + esc(q.id) + '"><span class="dd-txt">' +
             (q.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish') + '</span></button>' +
           '<button type="button" class="dd-item danger" data-del="' + esc(q.id) + '"><span class="dd-txt">' + icon('trash', 15) + ' Delete quiz</span></button>';

@@ -19,7 +19,6 @@
         <h1>Enrolled students</h1>
         <p class="sub" id="sub">Loading…</p>
       </div>
-      <button class="btn" id="csvBtn"></button>
     </section>
 
     <section class="statgrid" id="stats"></section>
@@ -73,7 +72,6 @@
 (async function () {
   var user = await requireLogin('teacher');
   navbar(user, 'students');
-  document.getElementById('csvBtn').innerHTML = icon('download', 14) + ' Export CSV';
   document.getElementById('backBtn').innerHTML = icon('arrowLeft', 15) + ' Back to students';
 
   var students = [];
@@ -261,24 +259,6 @@
     detailView.hidden = true;
     listView.hidden = false;
     window.scrollTo({ top: 0 });
-  };
-
-  /* ================= CSV export ================= */
-  document.getElementById('csvBtn').onclick = function () {
-    if (!students.length) { toast('Nothing to export yet', 'bad'); return; }
-    var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
-    var head = ['Name', 'Email', 'Classes', 'Joined', 'Quizzes taken', 'Attempts', 'Average %', 'Best %', 'Last active'].map(q).join(',');
-    var lines = view().map(function (s) {
-      return [s.name, s.email, (s.classes || []).map(function (c) { return c.name; }).join('; '),
-        new Date(s.createdAt).toISOString(), s.quizzesTaken, s.attempts,
-        s.avgPercent, s.bestPercent, s.lastActivity ? new Date(s.lastActivity).toISOString() : ''].map(q).join(',');
-    });
-    var csv = head + '\n' + lines.join('\n');
-    var a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'classmark-students.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    toast('CSV exported');
   };
 
   await loadList();

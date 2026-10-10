@@ -39,8 +39,7 @@
 (async function () {
   var user = await requireLogin('student');
   navbar(user, 'dashboard');
-  document.getElementById('welcome').textContent =
-    'Welcome back, ' + user.name.split(' ')[0] + ' — results appear here the moment you submit.';
+  document.getElementById('welcome').textContent = 'Welcome back, ' + user.name.split(' ')[0];
 
   async function loadAll() {
   var data = await Promise.all([
@@ -52,12 +51,12 @@
 
   /* ---- stats ------------------------------------------------------------ */
   var available = quizzes.filter(function (q) {
-    return winState(q) === 'open' && (q.inProgressAttemptId || q.waitingAttemptId || (q.attemptsUsed < q.attemptsAllowed && q.questionCount > 0));
+    return winState(q) === 'open' && (q.inProgressAttemptId || q.waitingAttemptId || (!q.attemptsUsed && q.questionCount > 0));
   });
   var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
   var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
   document.getElementById('stats').innerHTML =
-    statCard('zap', available.length, 'Quizzes open to me', 'click Enter to check in') +
+    statCard('zap', available.length, 'Quizzes open to me') +
     statCard('clipboardCheck', mine.length, 'Attempts submitted') +
     statCard('award', fmtPct(avg), 'My average score', '', 'accent') +
     statCard('trophy', fmtPct(best), 'My best score', '', 'mint');
@@ -124,14 +123,14 @@
       actions = '<span class="badge plain">Not open yet — opens ' + fmtWhen(q.opensAt) + '</span>';
     } else if (win === 'closed') {
       actions = '<span class="badge warn">Closed ' + fmtWhen(q.closesAt) + '</span>';
-    } else if (q.attemptsUsed >= q.attemptsAllowed) {
-      actions = '<span class="badge plain">No attempts left</span>';
+    } else if (q.attemptsUsed) {
+      actions = '<span class="badge ok">Completed</span>';
     } else if (!q.questionCount) {
       actions = '<span class="badge plain">No questions yet</span>';
     } else {
       actions = (q.startedAt && !q.attemptsUsed
         ? '<span class="badge warn">Started — join is closed</span>'
-        : '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Enter') + '</button>') +
+        : '<button class="btn primary block" data-start="' + q.id + '">Enter</button>') +
         (q.closesAt ? '' : '');
     }
     var outcome = '';
@@ -156,7 +155,6 @@
       '<span>' + icon('flag', 14) + ' pass ' + q.passMark + '%</span>' +
       (q.closesAt && win === 'open' ? '<span>' + icon('timer', 14) + ' closes ' + fmtWhen(q.closesAt) + '</span>' : '') +
       '</div>' +
-      '<div class="row small muted" style="margin-bottom:16px">Attempts used: <b>&nbsp;' + q.attemptsUsed + '/' + q.attemptsAllowed + '</b></div>' +
       actions +
       '</div>';
   }

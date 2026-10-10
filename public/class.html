@@ -284,13 +284,13 @@
     if (owner) {
       actions = '<div class="row btnrow">' +
         '<a class="btn sm" href="builder.html?id=' + q.id + '">' + icon('edit', 13) + ' Questions</a>' +
-        '<a class="btn sm primary" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' View and manage</a></div>' +
+        '<a class="btn sm primary" href="insights.html?id=' + q.id + '">' + icon('barChart', 13) + ' Enter</a></div>' +
         (q.published && !q.startedAt
           ? '<div class="row" style="margin-top:8px;gap:10px;flex-wrap:wrap;align-items:center">' +
             (q.waitingCount
               ? '<button class="btn sm primary" data-startqz="' + q.id + '" data-name="' + esc(q.title) + '" data-n="' + q.waitingCount + '">' + icon('zap', 13) + ' Start quiz</button>' +
                 '<span class="chip">' + icon('clock', 13) + ' ' + q.waitingCount + ' waiting</span>'
-              : '<span class="small muted">' + icon('clock', 13) + ' Students click Enter and wait for your start — <a href="insights.html?id=' + q.id + '"><b>open the waiting room</b></a></span>') +
+              : '<span class="small muted">' + icon('clock', 13) + ' Students enter and wait for your start — <a href="insights.html?id=' + q.id + '"><b>open the waiting room</b></a></span>') +
             '</div>'
           : (q.startedAt ? '<div class="row small muted" style="margin-top:8px">' + icon('lock', 13) + ' Started ' + fmtWhen(q.startedAt) + ' — join is closed</div>' : '')) +
         (q.opensAt || q.closesAt ? '<div class="row small muted" style="margin-top:8px">' + icon('timer', 14) + ' ' +
@@ -303,14 +303,14 @@
       actions = '<span class="badge plain">Not open yet — opens ' + fmtWhen(q.opensAt) + '</span>';
     } else if (win === 'closed') {
       actions = '<span class="badge warn">Closed ' + fmtWhen(q.closesAt) + '</span>';
-    } else if (q.attemptsUsed >= q.attemptsAllowed) {
-      actions = '<span class="badge plain">No attempts left</span>';
+    } else if (q.attemptsUsed) {
+      actions = '<span class="badge ok">Completed</span>';
     } else if (!q.questionCount) {
       actions = '<span class="badge plain">No questions yet</span>';
     } else {
       actions = (q.startedAt && !q.attemptsUsed
         ? '<span class="badge warn">Started — join is closed</span>'
-        : '<button class="btn primary block" data-start="' + q.id + '">' + (q.attemptsUsed ? 'Retake quiz' : 'Enter') + '</button>');
+        : '<button class="btn primary block" data-start="' + q.id + '">Enter</button>');
     }
     var outcome = '';
     if (!owner && q.bestPercent != null) {
@@ -335,7 +335,6 @@
       '<span>' + icon('helpCircle', 14) + ' ' + q.questionCount + ' questions</span>' +
       '<span>' + icon('flag', 14) + ' pass ' + q.passMark + '%</span>' +
       '</div>' +
-      '<div class="row small muted" style="margin-bottom:16px">Attempts used: <b>&nbsp;' + q.attemptsUsed + '/' + q.attemptsAllowed + '</b></div>' +
       actions +
       '</div>';
   }

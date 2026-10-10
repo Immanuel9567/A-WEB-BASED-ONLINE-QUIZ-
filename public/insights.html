@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>View and manage — ClassMark</title>
+<title>Monitor — ClassMark</title>
 <link rel="stylesheet" href="css/style.css">
 <link rel="preload" href="fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231a73e8'/%3E%3Cpath d='M30 55l14 14 26-30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -14,7 +14,7 @@
 <main class="container">
   <section class="pagehead">
     <div>
-      <h1 id="iTitle">View and manage</h1>
+      <h1 id="iTitle">Monitor</h1>
       <p class="sub" id="iMeta">Loading…</p>
     </div>
     <a class="btn" href="teacher.html" id="backLink"></a>
@@ -22,7 +22,7 @@
 
   <div class="tabs">
     <button class="tab active" data-tab="monitor"><span class="live-dot"></span>Live monitor</button>
-    <button class="tab" data-tab="results">Results &amp; export</button>
+    <button class="tab" data-tab="results">Results</button>
     <button class="tab" data-tab="analytics">Analytics</button>
   </div>
 
@@ -51,9 +51,6 @@
     <div class="card tight" style="margin-top:14px" id="notStartedCard" hidden>
       <b class="small">Not yet started:</b> <span class="muted small" id="notStartedList"></span>
     </div>
-    <p class="small muted" style="margin:12px 2px 0">
-      Live feed refreshes every 2 seconds. Attempts that run out of time are auto-submitted and graded by the server.
-    </p>
   </section>
 
   <!-- ================= RESULTS ================= -->
@@ -61,7 +58,6 @@
     <div class="row" style="margin-bottom:14px">
       <span class="muted small">All graded attempts for this quiz, newest first.</span>
       <span class="spacer"></span>
-      <button class="btn sm" id="csvBtn"></button>
     </div>
     <section class="card tablecard">
       <table>
@@ -112,7 +108,6 @@
   var user = await requireLogin('teacher');
   navbar(user, 'dashboard');
   document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + ' Quizzes';
-  document.getElementById('csvBtn').innerHTML = icon('download', 14) + ' Export CSV';
 
   var quizId = new URLSearchParams(location.search).get('id');
   if (!quizId) { location.href = 'teacher.html'; return; }
@@ -190,7 +185,7 @@
     document.getElementById('waitRoomIco').innerHTML = icon('clock', 26);
     document.getElementById('waitRoomTxt').textContent = mon.summary.waiting
       ? mon.summary.waiting + ' student' + (mon.summary.waiting === 1 ? ' is' : 's are') + ' checked in and waiting for you to start.'
-      : 'No students have entered yet — students click Enter on their dashboard and wait here.';
+      : 'No students have entered yet.';
     btn.innerHTML = icon('zap', 15) + ' Start quiz' + (mon.summary.waiting ? ' (' + mon.summary.waiting + ')' : '');
     btn.disabled = !mon.summary.waiting;
     btn.onclick = async function () {
@@ -281,22 +276,6 @@
       }).join('');
     } catch (err) { toast(err.message, 'bad'); }
   }
-
-  document.getElementById('csvBtn').onclick = function () {
-    if (!resRows.length) { toast('Nothing to export yet', 'bad'); return; }
-    var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
-    var head = ['Student', 'Score', 'Max', 'Percent', 'Outcome', 'Time used (s)', 'Tab switches', 'Status', 'Submitted'].map(q).join(',');
-    var lines = resRows.map(function (a) {
-      return [a.student, a.score, a.maxScore, a.percent, a.passed ? 'PASS' : 'FAIL', a.durationUsedSec, a.tabSwitches, a.status,
-        a.submittedAt ? new Date(a.submittedAt).toISOString() : ''].map(q).join(',');
-    });
-    var csv = head + '\n' + lines.join('\n');
-    var aEl = document.createElement('a');
-    aEl.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    aEl.download = 'classmark-results.csv';
-    document.body.appendChild(aEl); aEl.click(); aEl.remove();
-    toast('CSV exported');
-  };
 
   /* ================= ANALYTICS ================= */
   async function loadAnalytics() {

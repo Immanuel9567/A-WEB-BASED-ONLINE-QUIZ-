@@ -169,6 +169,9 @@ function loadDb() {
 function migrateModel() {
   let changed = false;
   if (!Array.isArray(db.courses)) { db.courses = []; changed = true; }
+  for (const q of db.quizzes) { // quizzes are single-attempt — always were meant to be sat once
+    if (q.attemptsAllowed !== 1) { q.attemptsAllowed = 1; changed = true; }
+  }
   const findTeacher = (ref) => byId(db.users, ref) || db.users.find((u) => u.email === ref) || null;
   for (const u of db.users) {
     if (u.role !== 'teacher') continue;
@@ -523,6 +526,7 @@ function quizFor(q, user) { // meta + counters, personalised for the viewer
     bestPercent: myDone.length ? Math.max(...myDone.map((a) => a.percent)) : null,
     bestPassed: myDone.length ? myDone.some((a) => a.passed) : null,
     inProgressAttemptId: inprog ? inprog.id : null,
+    liveCount: atts.filter((a) => a.status === 'in_progress').length,
     waitingCount: atts.filter((a) => a.status === 'waiting').length,
     waitingAttemptId: (mine.find((a) => a.status === 'waiting') || {}).id || null,
     latestAttemptId: myDone.length ? myDone[myDone.length - 1].id : null
@@ -560,7 +564,7 @@ function validQuizBody(body) {
     description: String(body.description || '').trim(),
     durationMin: clamp(Math.round(Number(body.durationMin) || 15), 1, 180),
     passMark: clamp(Math.round(Number(body.passMark) || 50), 0, 100),
-    attemptsAllowed: clamp(Math.round(Number(body.attemptsAllowed) || 2), 1, 10),
+    attemptsAllowed: 1, // single attempt — every student sits the quiz once
     shuffle: !!body.shuffle,
     shuffleOptions: !!body.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(body.tabSwitchPolicy) ? body.tabSwitchPolicy : 'warn',
@@ -760,12 +764,12 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   const waiting = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'waiting');
   if (waiting) return send(res, 200, { attempt: { id: waiting.id, status: 'waiting' }, quiz: meta(quiz), serverNow: now() });
   const myDone = db.attempts.filter((a) => a.userId === user.id && a.quizId === quiz.id && isDone(a));
-  if (myDone.length >= quiz.attemptsAllowed) {
-    return send(res, 409, { error: `Attempt limit reached (${myDone.length}/${quiz.attemptsAllowed}).` });
+  if (myDone.length) {
+    return send(res, 409, { error: 'You have already completed this quiz.' });
   }
-  // synchronized start (enforced): before the teacher starts, a first entry joins the waiting room;
-  // after the start nobody new can join — only students who already sat the quiz may retake
-  if (quiz.startedAt && !myDone.length) {
+  // synchronized start (enforced, final): before the teacher starts, entering joins the waiting room;
+  // once the quiz has started nobody else can join — no exceptions, no retakes
+  if (quiz.startedAt) {
     return send(res, 403, { error: 'This quiz has already started — join is closed.' });
   }
   let order = qs.map((q) => q.id);
@@ -1206,12 +1210,15 @@ route('PUT', '/api/auth/profile', async ({ user, body, req, res }) => {
   const newPw = String(body.newPassword || '');
   if (name.length < 2) return send(res, 400, { error: 'Please enter your full name (at least 2 characters).' });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
-  if (user.pass !== hashPw(curPw, user.salt)) return send(res, 403, { error: 'Current password is incorrect.' });
   if (db.users.some((u) => u.email === email && u.id !== user.id)) {
     return send(res, 409, { error: 'Another account already uses that email address.' });
   }
   if (newPw && newPw.length < 6) return send(res, 400, { error: 'New password must be at least 6 characters.' });
   const emailChanged = email !== user.email;
+  // a plain rename (same email, no new password) needs no password — sensitive changes still do
+  if ((emailChanged || newPw) && user.pass !== hashPw(curPw, user.salt)) {
+    return send(res, 403, { error: 'Current password is incorrect.' });
+  }
   user.name = name;
   user.email = email;
   if (newPw) {

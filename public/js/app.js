@@ -662,8 +662,8 @@
         '<input id="pfName" type="text" value="' + esc(user.name) + '"></div>' +
         '<div class="field"><label for="pfEmail">Email address</label>' +
         '<input id="pfEmail" type="email" value="' + esc(user.email) + '"></div>' +
-        '<div class="field"><label for="pfCur">Current password</label>' +
-        '<div class="pwwrap"><input id="pfCur" type="password" autocomplete="current-password" placeholder="Required to save any change"></div></div>' +
+        '<div class="field"><label for="pfCur">Current password <span class="muted">(only to change email or password)</span></label>' +
+        '<div class="pwwrap"><input id="pfCur" type="password" autocomplete="current-password"></div></div>' +
         '<div class="field"><label for="pfNew">New password <span class="muted">(optional)</span></label>' +
         '<div class="pwwrap"><input id="pfNew" type="password" autocomplete="new-password" placeholder="Leave blank to keep your current password"></div>' +
         '<div class="modal-actions">' +
@@ -695,11 +695,15 @@
         err.hidden = true;
         btn.disabled = true; btn.textContent = 'Saving…';
         try {
+          var newName = ov.querySelector('#pfName').value;
+          var newEmail = ov.querySelector('#pfEmail').value;
+          var newPw = ov.querySelector('#pfNew').value;
+          var sensitive = newEmail !== user.email || !!newPw; // a plain rename needs no password
           var r = await PUT('/api/auth/profile', {
-            name: ov.querySelector('#pfName').value,
-            email: ov.querySelector('#pfEmail').value,
-            currentPassword: ov.querySelector('#pfCur').value,
-            newPassword: ov.querySelector('#pfNew').value
+            name: newName,
+            email: newEmail,
+            currentPassword: sensitive ? ov.querySelector('#pfCur').value : '',
+            newPassword: newPw
           });
           toast(r.passwordChanged ? 'Profile updated — use your new password next time you sign in' : 'Profile updated');
           close(r.user);
