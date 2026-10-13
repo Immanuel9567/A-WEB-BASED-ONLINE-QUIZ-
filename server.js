@@ -10,7 +10,7 @@
    ----------------------------------------------------------------------------
    Stack: Node.js (built-in http / fs / crypto) + better-sqlite3 for storage.
    Storage: SQLite database (data/classmark.db), mirrored to JSON (data/db.json)
-            and backed up encrypted to a private cloud git branch.
+            and backed up encrypted to a private cloud git branch or Supabase table.
    ============================================================================ */
 'use strict';
 
@@ -23,6 +23,13 @@ const PORT          = Number(process.env.PORT || 3000);
 const PUB           = path.join(__dirname, 'public');
 const DB_FILE       = path.join(__dirname, 'data', 'db.json');
 const SQL_FILE      = path.join(__dirname, 'data', 'classmark.db');
+
+/* Serverless mode (Vercel): the platform sets VERCEL=1 automatically. There is no
+   long-lived process and no disk that survives, so Supabase IS the database — the
+   encrypted state is loaded per request and saved back with optimistic versioning. */
+const SERVERLESS = !!(process.env.VERCEL || process.env.OQAS_SERVERLESS);
+let sbVersion = 0;    // version of the Supabase state row currently loaded into db
+let sbDirty = false;  // saveDb() ran during the request being served
 const GRACE_MS      = 15000;                 // network grace window after timer ends
 const SESSION_TTL   = 90 * 24 * 3600 * 1000; // 90 days — persistent logins
 
@@ -119,6 +126,7 @@ function sqlSaveAll() { // whole-document rewrite inside one transaction (atomic
 
 function saveDb() {
   db.updatedAt = now();
+  if (SERVERLESS) { sbDirty = true; return; } // saved back to Supabase after the response is computed
   if (sql) {
     try { sqlSaveAll(); } catch (e) { console.error('sqlite: write failed -', e.message); }
   }
@@ -890,6 +898,8 @@ route('POST', '/api/attempts/([A-Za-z0-9_]+)/submit', async ({ user, params, bod
   finishAttempt(a); // ---- instant, automated grading happens HERE ----
   notifySubmission(byId(db.quizzes, a.quizId), a, a.status === 'expired' ? 'expired' : 'submitted');
   saveDb();
+  // results are the most precious data — push them to the cloud at once, no debounce window
+  cloudSaveNow().catch((e) => console.error('cloud: submit save failed -', e.message));
   send(res, 200, {
     attemptId: a.id, status: a.status, score: a.score, maxScore: a.maxScore,
     percent: a.percent, passed: a.passed
@@ -1439,6 +1449,20 @@ const CLOUD_BRANCH = process.env.OQAS_CLOUD_BRANCH || 'cloud-data';
 const CLOUD_FILE   = process.env.OQAS_CLOUD_PATH   || 'cloud/db.json';
 const GH = 'https://api.github.com';
 
+/* Supabase (optional, free tier): when URL + service key are set, the encrypted
+   backup lives in a locked-down Postgres table instead of the GitHub branch.
+   Plain REST calls with the service key — no npm dependency. The payload stays
+   AES-256-GCM encrypted with the cloud passphrase before it ever leaves the server. */
+const SB_URL   = (process.env.OQAS_SUPABASE_URL || '').replace(/\/+$/, '');
+const SB_KEY   = process.env.OQAS_SUPABASE_SERVICE_KEY || '';
+const SB_TABLE = process.env.OQAS_SUPABASE_TABLE || 'cloud_state';
+const SB_ROW   = process.env.OQAS_SUPABASE_ROW || 'main';
+function sbFetch(qs) { // PostgREST call with the service key — server-side only
+  return fetch(SB_URL + '/rest/v1/' + SB_TABLE + (qs || ''), {
+    headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+  });
+}
+
 function cloudConfigPaths() { // first existing wins; connect writes to all
   const list = [];
   if (process.env.OQAS_CLOUD_CONFIG) list.push(process.env.OQAS_CLOUD_CONFIG);
@@ -1449,6 +1473,21 @@ function cloudConfigPaths() { // first existing wins; connect writes to all
 let cloudCfg = null;
 function loadCloudCfg() {
   cloudCfg = null;
+  // Supabase mode: backed by a Postgres table, no GitHub token needed. If a GitHub
+  // token is also present it is kept only to seed Supabase once on the first boot.
+  if (SB_URL && SB_KEY && process.env.OQAS_CLOUD_PASSPHRASE) {
+    let ghToken = process.env.OQAS_CLOUD_TOKEN || '';
+    if (!ghToken) {
+      for (const p of cloudConfigPaths()) {
+        try {
+          const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (c && c.token) { ghToken = c.token; break; }
+        } catch (e) { /* keep looking */ }
+      }
+    }
+    cloudCfg = { provider: 'supabase', passphrase: process.env.OQAS_CLOUD_PASSPHRASE, ghToken, via: 'env' };
+    return;
+  }
   for (const p of cloudConfigPaths()) {
     try {
       const c = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -1462,6 +1501,15 @@ function loadCloudCfg() {
   }
 }
 loadCloudCfg();
+
+// Supabase free projects pause after a week with no API activity — one tiny
+// authenticated read every 12h keeps the project awake (no-op in GitHub mode).
+if (!SERVERLESS && cloudCfg && cloudCfg.provider === 'supabase') {
+  const sbWarm = setInterval(() => {
+    sbFetch('?id=eq.' + encodeURIComponent(SB_ROW) + '&select=id').catch(() => {});
+  }, 12 * 60 * 60 * 1000);
+  if (sbWarm.unref) sbWarm.unref();
+}
 
 const cloudState = { lastSavedAt: null, lastError: null, saving: false };
 
@@ -1508,10 +1556,30 @@ async function ensureCloudBranch(token) {
 }
 
 async function cloudSaveNow() {
+  if (SERVERLESS) return { savedAt: now() }; // the request wrapper saves the whole state itself
   if (!cloudCfg) throw new Error('Cloud storage is not connected yet.');
   if (cloudState.saving) return null;
   cloudState.saving = true;
   try {
+    if (cloudCfg.provider === 'supabase') {
+      const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive restarts
+      const w = await fetch(SB_URL + '/rest/v1/' + SB_TABLE, {
+        method: 'POST',
+        headers: {
+          apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
+          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({ id: SB_ROW, payload, updated_at: new Date().toISOString() })
+      });
+      if (w.status !== 201) {
+        const j = await w.json().catch(() => null);
+        if (j && j.code === '42P01') throw new Error('Supabase table ' + SB_TABLE + ' does not exist — create it with the SQL from the README (Cloud storage).');
+        throw new Error('Supabase write failed: ' + ((j && (j.message || j.hint)) || ('HTTP ' + w.status)));
+      }
+      cloudState.lastSavedAt = now();
+      cloudState.lastError = null;
+      return { savedAt: cloudState.lastSavedAt };
+    }
     await ensureCloudBranch(cloudCfg.token);
     const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive restarts
     const content = Buffer.from(JSON.stringify(payload, null, 1)).toString('base64');
@@ -1548,10 +1616,9 @@ function scheduleCloudSave() { // debounced auto-save after local writes
 }
 if (cloudTimer && cloudTimer.unref) cloudTimer.unref();
 
-async function cloudFetchData() { // -> decrypted db object | null (nothing in cloud)
-  if (!cloudCfg) return null;
-  await ensureCloudBranch(cloudCfg.token);
-  const g = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
+async function githubFetchData(token) { // -> decrypted db object | null (nothing in cloud)
+  await ensureCloudBranch(token);
+  const g = await ghFetch(token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
   if (g.status === 404) return null;
   if (g.status !== 200) throw new Error('GitHub read failed (HTTP ' + g.status + ')');
   const j = await g.json();
@@ -1562,10 +1629,167 @@ async function cloudFetchData() { // -> decrypted db object | null (nothing in c
   return cloudDecrypt(payload, cloudCfg.passphrase);
 }
 
+let sbSeedPending = false; // first Supabase boot found an empty table — seed it after startup reconcile
+async function cloudFetchData() { // -> decrypted db object | null (nothing in cloud)
+  if (!cloudCfg) return null;
+  if (cloudCfg.provider === 'supabase') {
+    const r = await sbFetch('?id=eq.' + encodeURIComponent(SB_ROW) + '&select=payload&limit=1');
+    if (r.status !== 200) {
+      const j = await r.json().catch(() => null);
+      if (j && j.code === '42P01') throw new Error('Supabase table ' + SB_TABLE + ' does not exist — create it with the SQL from the README (Cloud storage).');
+      throw new Error('Supabase read failed (HTTP ' + r.status + ')');
+    }
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) {
+      // first boot after switching to Supabase: the table is still empty —
+      // seed it from the GitHub backup when one exists, otherwise start fresh
+      sbSeedPending = true;
+      if (cloudCfg.ghToken) return githubFetchData(cloudCfg.ghToken);
+      return null;
+    }
+    const payload = rows[0].payload;
+    if (!payload || payload.app !== 'OQAS' || payload.enc !== 'aes-256-gcm') return null;
+    if (payload.savedAt && !cloudState.lastSavedAt) cloudState.lastSavedAt = payload.savedAt;
+    return cloudDecrypt(payload, cloudCfg.passphrase);
+  }
+  return githubFetchData(cloudCfg.token);
+}
+
+/* ======== SERVERLESS STATE (Vercel + Supabase) ========
+   Each request loads the encrypted state row into `db`; each request that changed
+   anything saves it back through the sb_upsert RPC, which only lands when the row
+   version still matches what we loaded — a parallel save from another instance
+   makes it fail cleanly and the whole request is retried on fresh data. */
+async function sbLoadState() {
+  const r = await sbFetch('?id=eq.' + encodeURIComponent(SB_ROW) + '&select=payload,version&limit=1');
+  if (r.status !== 200) {
+    const j = await r.json().catch(() => null);
+    if (j && j.code === '42P01') throw new Error('Supabase table ' + SB_TABLE + ' does not exist — create it with the SQL from the README (Cloud storage).');
+    throw new Error('Supabase read failed (HTTP ' + r.status + ')');
+  }
+  const rows = await r.json();
+  if (Array.isArray(rows) && rows.length && rows[0].payload) {
+    const payload = rows[0].payload;
+    if (payload.app !== 'OQAS' || payload.enc !== 'aes-256-gcm') throw new Error('The Supabase row is not a ClassMark backup.');
+    db = cloudDecrypt(payload, cloudCfg.passphrase);
+    migrateModel();
+    sbVersion = Number(rows[0].version) || 0;
+    return false;
+  }
+  // empty table — the first deploy after switching: seed once from the GitHub backup
+  if (cloudCfg && cloudCfg.ghToken) {
+    const legacy = await githubFetchData(cloudCfg.ghToken);
+    if (legacy && Array.isArray(legacy.users) && legacy.users.length) {
+      db = legacy;
+      sbVersion = 0;
+      return true; // the wrapper should write the first Supabase row right away
+    }
+  }
+  seed();
+  sbVersion = 0;
+  return false;
+}
+
+async function sbSaveState() { // -> {ok:true, version} | {ok:false} (someone saved first)
+  const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive cold starts
+  const r = await fetch(SB_URL + '/rest/v1/rpc/sb_upsert', {
+    method: 'POST',
+    headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_id: SB_ROW, p_payload: payload, p_expected: sbVersion, p_updated_at: new Date().toISOString() })
+  });
+  if (r.status !== 200) {
+    const j = await r.json().catch(() => null);
+    if (j && j.code === '42P01') throw new Error('Supabase table ' + SB_TABLE + ' does not exist — create it with the SQL from the README (Cloud storage).');
+    throw new Error('Supabase save failed: ' + ((j && (j.message || j.hint)) || ('HTTP ' + r.status)));
+  }
+  const out = await r.json();
+  if (out && out.ok) sbVersion = Number(out.version) || (sbVersion + 1);
+  return out || { ok: false };
+}
+
+/* ---- Vercel adapter: this is what api/[[...path]].js exports ---- */
+function readBodyRaw(req) { // raw body string — the request can then be replayed on a save conflict
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > 5e6) { reject(new Error('Payload too large')); req.destroy(); }
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
+function SbBufferedRes(req) { // captures the response so nothing is sent before the state is safely saved
+  this.req = { method: req.method, url: req.url, headers: req.headers };
+  this.status = 200;
+  this.headers = null;
+  this.body = '';
+}
+SbBufferedRes.prototype.writeHead = function (code, hdrs) { this.status = code; this.headers = hdrs || {}; };
+SbBufferedRes.prototype.setHeader = function () {};
+SbBufferedRes.prototype.end = function (b) { this.body = (b === undefined || b === null) ? '' : String(b); };
+SbBufferedRes.prototype.flush = function (res) {
+  res.writeHead(this.status, this.headers || { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(this.body);
+};
+
+async function sbDispatch(req, res, p, u, raw) { // the same route loop the http server uses
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+    });
+    return res.end();
+  }
+  for (const r of routes) {
+    if (req.method !== r.method) continue;
+    const m = p.match(r.re);
+    if (!m) continue;
+    let body = {};
+    if (raw !== null) { try { body = JSON.parse(raw) || {}; } catch (e) {} }
+    const user = getUser(req);
+    return await r.handler({ req, res, params: m.slice(1), body, user, query: u.searchParams });
+  }
+  return send(res, 404, { error: 'Endpoint not found.' });
+}
+
+async function vercelHandler(req, res) {
+  try {
+    const u = new URL(req.url, 'http://localhost');
+    const p = decodeURIComponent(u.pathname);
+    if (!p.startsWith('/api/')) return send(res, 404, { error: 'Not found.' });
+    if (!cloudCfg || cloudCfg.provider !== 'supabase') {
+      return send(res, 500, { error: 'Database not configured. Set OQAS_SUPABASE_URL, OQAS_SUPABASE_SERVICE_KEY and OQAS_CLOUD_PASSPHRASE in the hosting environment.' });
+    }
+    const raw = (req.method === 'POST' || req.method === 'PUT') ? await readBodyRaw(req) : null;
+    let buf = null, saved = true;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      sbDirty = await sbLoadState(); // true when the loader seeded from the GitHub backup
+      buf = new SbBufferedRes(req);
+      await sbDispatch(req, buf, p, u, raw);
+      if (!sbDirty) break;
+      const w = await sbSaveState();
+      saved = !!(w && w.ok);
+      if (saved) break;
+      // another instance saved first — reload fresh data and run the request again
+    }
+    if (!saved) return send(res, 503, { error: 'Database busy — please try again.' });
+    return buf.flush(res);
+  } catch (err) {
+    try { send(res, 500, { error: 'Server error', detail: String((err && err.message) || err) }); } catch (e) {}
+  }
+}
+
 route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   send(res, 200, {
-    connected: !!cloudCfg, via: cloudCfg ? (cloudCfg.via || 'file') : null, repo: CLOUD_REPO, branch: CLOUD_BRANCH,
+    connected: !!cloudCfg, provider: cloudCfg ? (cloudCfg.provider || 'github') : null,
+    via: cloudCfg ? (cloudCfg.via || 'file') : null,
+    repo: cloudCfg && cloudCfg.provider !== 'supabase' ? CLOUD_REPO : null,
+    branch: cloudCfg && cloudCfg.provider !== 'supabase' ? CLOUD_BRANCH : null,
+    supabase: cloudCfg && cloudCfg.provider === 'supabase' ? SB_URL : null,
     lastSavedAt: cloudState.lastSavedAt, lastError: cloudState.lastError,
     saving: cloudState.saving, autoSave: true,
     users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length
@@ -1574,6 +1798,9 @@ route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
 
 route('POST', '/api/admin/cloud/connect', async ({ user, body, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
+  if (cloudCfg && cloudCfg.provider === 'supabase') {
+    return send(res, 400, { error: 'Cloud storage runs on Supabase, configured by environment variables — nothing to connect here.' });
+  }
   const token = String(body.token || '').trim();
   const passphrase = String(body.passphrase || '');
   if (!token) return send(res, 400, { error: 'Paste a GitHub personal access token.' });
@@ -1624,9 +1851,10 @@ route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
 
 async function cloudStartupRestore() { // reconcile local vs cloud before serving
   if (!cloudCfg) return;
+  try {
   let data = null;
   try { data = await cloudFetchData(); }
-  catch (e) { console.error('cloud: read failed -', e.message); return; }
+  catch (e) { console.error('cloud: read failed -', e.message); cloudState.lastError = String((e && e.message) || e); return; }
   if (!data || !Array.isArray(data.users)) {
     console.log('cloud: connected, no saved data yet - starting fresh');
     return;
@@ -1658,14 +1886,21 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
     console.log('cloud: restored ' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes, ' + db.attempts.length + ' attempts' +
       (rescue.length ? ' (' + rescue.length + ' local account(s) rescued)' : ''));
   } catch (e) {
-    console.error('cloud: restore skipped -', e.message);
+      console.error('cloud: restore skipped -', e.message);
+    }
+  } finally {
+    // one-time migration: the Supabase table was empty — write its first row now,
+    // from the migrated GitHub backup or the newer local database
+    if (sbSeedPending && cloudCfg.provider === 'supabase' && (db.users.length || db.quizzes.length)) {
+      cloudSaveNow().catch((e) => console.error('cloud: supabase seed failed -', e.message));
+    }
   }
 }
 
 route('GET', '/api/health', async ({ res }) => send(res, 200, { ok: true, name: 'ClassMark API', time: now() }));
 
 /* --------------------------------------------------------------- server     */
-loadDb();
+if (!SERVERLESS && require.main === module) loadDb(); // serverless: state loads per request instead
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -1713,8 +1948,10 @@ function flushCloudAndExit() {
     process.exit(0);
   }
 }
-process.on('SIGTERM', flushCloudAndExit);
-process.on('SIGINT', flushCloudAndExit);
+if (!SERVERLESS) {
+  process.on('SIGTERM', flushCloudAndExit);
+  process.on('SIGINT', flushCloudAndExit);
+}
 
 function startListen() {
 server.listen(PORT, '0.0.0.0', () => {
@@ -1727,4 +1964,11 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('==================================================');
 });
 }
-cloudStartupRestore().catch(function () {}).finally(startListen);
+if (SERVERLESS) {
+  // Vercel: no listening server and no boot restore — every request loads and saves
+  // the database itself (see vercelHandler above).
+} else if (require.main === module) {
+  cloudStartupRestore().catch(function () {}).finally(startListen);
+}
+
+module.exports = { vercelHandler };

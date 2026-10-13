@@ -118,12 +118,14 @@ restore, joining a class — also update the screen in place.
 - **Answer explanations** — teachers attach an explanation per question; students see it on
   the graded review sheet right after submission, together with the question picture.
 
-**Cloud save (encrypted GitHub storage)**
-- Connect a GitHub personal access token once and the **whole database auto-saves to the
-  cloud** a few seconds after every change — AES-256-GCM encrypted, stored on a
-  `cloud-data` branch of your repository.
-- The server **restores from the cloud automatically on startup**, so quizzes and results
-  survive restarts and redeploys — no user action needed, everything just works.
+**Cloud save (encrypted cloud storage)**
+- Connect cloud storage once and the **whole database auto-saves to the cloud** after every
+  change — AES-256-GCM encrypted with your passphrase before it leaves the server.
+- Two interchangeable backends: a **Supabase Postgres table** (recommended — used by the
+  Vercel deployment) or a `cloud-data` **branch of your repository** (used by Render/local).
+- The server **restores from the cloud automatically** — on startup (long-running hosts) or
+  per request (serverless hosts) — so quizzes and results survive restarts, redeploys and
+  cold starts. No user action needed, everything just works.
 
 **Automated grading & real-time results**
 - Grading runs server-side the instant an attempt is submitted.
@@ -347,7 +349,83 @@ Notes:
 
 The app is a single zero-dependency Node.js process, so it deploys anywhere Node runs.
 
-### One click on Render (recommended, free)
+### Vercel + Supabase (recommended, free)
+
+Static pages are served by the Vercel CDN straight from `public/`, every `/api/*` request
+runs as a serverless function (`api/[[...path]].js`), and **Supabase (free Postgres) is the
+database** — no sleeping server, no 30–60s wake-ups, no ephemeral filesystem to worry about.
+
+**1. Create the database (one time).**
+
+1. Create a free account at [supabase.com](https://supabase.com) → **New project** (free plan).
+2. Open **SQL Editor** and run:
+
+   ```sql
+   -- ClassMark cloud state: one encrypted row + an atomic versioned save function
+   create table if not exists cloud_state (
+     id         text primary key,
+     payload    jsonb not null,
+     version    bigint not null default 0,
+     updated_at timestamptz not null default now()
+   );
+   alter table cloud_state enable row level security;
+   revoke all on cloud_state from anon, authenticated;
+
+   create or replace function sb_upsert(
+     p_id text, p_payload jsonb, p_expected bigint, p_updated_at timestamptz
+   ) returns jsonb language plpgsql as $$
+   declare v bigint;
+   begin
+     select version into v from cloud_state where id = p_id for update;
+     if v is null then
+       if p_expected > 0 then return jsonb_build_object('ok', false); end if;
+       insert into cloud_state (id, payload, version, updated_at)
+         values (p_id, p_payload, 1, p_updated_at);
+       return jsonb_build_object('ok', true, 'version', 1);
+     end if;
+     if v <> p_expected then return jsonb_build_object('ok', false); end if;
+     update cloud_state
+        set payload = p_payload, version = version + 1, updated_at = p_updated_at
+      where id = p_id;
+     return jsonb_build_object('ok', true, 'version', v + 1);
+   end $$;
+   revoke all on function sb_upsert(text, jsonb, bigint, timestamptz) from anon, authenticated;
+   ```
+
+3. **Project Settings → API**: copy the **Project URL** and the **service_role** secret
+   (the `anon` public key is useless here — the table is locked down with RLS).
+
+**2. Deploy the app.**
+
+1. [vercel.com](https://vercel.com) → **Add New → Project** → import this GitHub repo.
+   No framework needed — Vercel auto-detects the static `public/` directory and the
+   `api/` serverless function (`vercel.json` is already in the repo).
+2. **Environment Variables** (Project → Settings → Environment Variables):
+
+   | Variable | Value |
+   |---|---|
+   | `OQAS_SUPABASE_URL` | The Supabase **Project URL** |
+   | `OQAS_SUPABASE_SERVICE_KEY` | The Supabase **service_role** secret |
+   | `OQAS_CLOUD_PASSPHRASE` | Your cloud passphrase (6+ chars). **Use the same one as your existing backup** so migrated data stays readable |
+   | `OQAS_CLOUD_TOKEN` | *(migration only)* Your GitHub token — lets the first request copy the existing GitHub-branch backup into Supabase automatically. Remove after the first deploy. |
+   | `OQAS_CLOUD_BRANCH` | *(migration only)* The branch your live backup lives on, e.g. `cloud-data-live` |
+
+3. Deploy. Done — data now lives in Supabase, encrypted end to end: the payload is
+   AES-256-GCM ciphertext before it ever leaves the server, the service key never leaves
+   the server environment, and anonymous keys are revoked on the table itself.
+
+**How it works:** each request loads the encrypted state, serves it, and — if anything
+changed — saves it back through `sb_upsert`, which only lands when the row version still
+matches. If two students submit at the same moment, the second save is retried on fresh
+data, so no submission can ever be lost. Sessions are part of the encrypted state, so
+nobody gets signed out by a cold start.
+
+**Free-plan notes:** Supabase pauses projects after ~1 week of total inactivity. Any use
+of the app counts as activity; if you want insurance during holidays, point a free uptime
+monitor ([cron-job.org](https://cron-job.org) / [uptimeMonitor](https://uptimerobot.com))
+at `https://<your-app>.vercel.app/api/health` once or twice a week.
+
+### One click on Render (alternative, free)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Immanuel9567/A-WEB-BASED-ONLINE-QUIZ-)
 
