@@ -1971,4 +1971,4 @@ if (SERVERLESS) {
   cloudStartupRestore().catch(function () {}).finally(startListen);
 }
 
-module.exports = { vercelHandler };
+module.exports = vercelHandler; // the function itself — so any wrapper that imports this file gets a working handler
