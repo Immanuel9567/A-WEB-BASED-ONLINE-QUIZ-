@@ -1747,6 +1747,47 @@ route('DELETE', '/api/admin/teachers/([^/]+)', async ({ user, params, res }) => 
   send(res, 200, { email: email });
 });
 
+const PW_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const genPassword = () => {
+  const buf = crypto.randomBytes(10);
+  let out = '';
+  for (let i = 0; i < 10; i++) out += PW_CHARS[buf[i] % PW_CHARS.length];
+  return out;
+};
+
+route('POST', '/api/admin/users', async ({ user, body, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const name  = String(body.name || '').trim();
+  const email = String(body.email || '').trim().toLowerCase();
+  const pw    = String(body.password || '').trim() || genPassword();
+  if (name.length < 2) return send(res, 400, { error: 'Please enter your full name.' });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
+  if (pw.length < 6) return send(res, 400, { error: 'Password must be at least 6 characters.' });
+  if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
+  const salt = crypto.randomBytes(8).toString('hex');
+  const u = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role: 'teacher', createdAt: now() };
+  db.users.push(u);
+  db.classes.push({ id: uid('cls'), name: 'My Class', code: genClassCode(), teacherId: u.id, studentIds: [], createdAt: now() });
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: user create save failed -', e.message));
+  send(res, 201, { user: publicUser(u), password: pw });
+});
+
+route('POST', '/api/admin/users/([A-Za-z0-9_]+)/password', async ({ user, params, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const u = byId(db.users, params[0]);
+  if (!u) return send(res, 404, { error: 'Account not found.' });
+  const pw = genPassword();
+  u.salt = crypto.randomBytes(8).toString('hex');
+  u.pass = hashPw(pw, u.salt);
+  for (const k of Object.keys(db.sessions)) {
+    if (db.sessions[k].userId === u.id && u.id !== user.id) delete db.sessions[k];
+  }
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: password reset save failed -', e.message));
+  send(res, 200, { email: u.email, password: pw });
+});
+
 route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   send(res, 200, {
