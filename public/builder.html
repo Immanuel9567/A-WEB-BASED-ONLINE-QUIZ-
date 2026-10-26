@@ -26,7 +26,7 @@
   </section>  </section>
 
   <div class="twocol" id="bcWrap">
-    <!-- ============ left: settings + question list ============ -->
+
     <section>
       <div class="card tight" id="setCard" style="margin-bottom:16px">
         <div class="row" style="margin-bottom:10px">
@@ -116,7 +116,6 @@
       </div>
     </section>
 
-    <!-- ============ right: question editor ============ -->
     <section class="card" id="editorCard">
       <h3 id="formTitle" style="font-size:17px">Add a new question</h3>
       <p class="small muted" id="draftNote" hidden></p>
@@ -148,7 +147,7 @@
 
       <div id="optsWrap">
         <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:7px;color:#3c4043">
-          Options — click the check circle to mark the correct one(s)
+          Options
         </label>
         <div id="optRows"></div>
         <button class="btn sm" id="addOptBtn" type="button"></button>
@@ -191,7 +190,7 @@
   navbar(user, new URLSearchParams(location.search).get('id') ? 'dashboard' : 'create');
 
   var quizId = new URLSearchParams(location.search).get('id');
-  var creating = !quizId; // no id = create a brand-new quiz
+  var creating = !quizId;
 
   document.getElementById('backLink').innerHTML = icon('arrowLeft', 15) + ' Quizzes';
   document.getElementById('saveSettings').innerHTML = icon(creating ? 'plus' : 'save', 14) + (creating ? ' Create quiz' : ' Save settings');
@@ -200,7 +199,6 @@
   document.getElementById('resetBtn').innerHTML = icon('x', 14) + ' Cancel edit';
   $('#backLink').href = 'teacher.html';
 
-  /* ---- class & courses: a quiz can live in one or more courses of one of my classes ---- */
   var myClasses = [], myCourses = [];
   try {
     var cd = await GET('/api/classes/mine');
@@ -212,7 +210,7 @@
   } catch (err) {}
   var selClass = document.getElementById('qsClass');
   var selCourse = document.getElementById('qsCourse');
-  var extraCourseIds = [];  // courses of this quiz that live in other classes — kept as-is
+  var extraCourseIds = [];
   function fillClassSel(selectedId) {
     selClass.innerHTML = myClasses.map(function (c) {
       return '<option value="' + esc(c.id) + '"' + (c.id === selectedId ? ' selected' : '') + '>' + esc(c.name) + '</option>';
@@ -244,7 +242,7 @@
     } catch (err) { toast(err.message, 'bad'); }
     btn.disabled = false;
   };
-  fillClassSel(myClasses.length === 1 ? myClasses[0].id : null); // preselect the only class, if there is just one
+  fillClassSel(myClasses.length === 1 ? myClasses[0].id : null);
   fillCourseSel(selClass.value, null);
 
   var quiz = null;
@@ -281,7 +279,7 @@
       fillCourseSel(qcs[0].classId, qcs[0].id);
       extraCourseIds = qcs.filter(function (x) { return x.classId !== qcs[0].classId; }).map(function (x) { return x.id; });
     }
-    /* arriving straight from Create: land on the questions editor, settings one click away */
+
     if (new URLSearchParams(location.search).get('add') === '1') {
       document.getElementById('setCard').hidden = true;
       var st = document.getElementById('setToggle');
@@ -297,7 +295,6 @@
     }
   }
 
-  /* ================= required fields: progress bar red -> green ================= */
   function paintReq() {
     if (!creating) return;
     var t = document.getElementById('qsTitle').value.trim();
@@ -312,7 +309,6 @@
   document.getElementById('qsTitle').addEventListener('input', paintReq);
   paintReq();
 
-  /* ================= publish toggle (edit mode) ================= */
   var pubBtn = document.getElementById('pubBtn');
   var monBtn = document.getElementById('monBtn');
   function paintPub() {
@@ -334,14 +330,13 @@
   };
   if (!creating) paintPub();
 
-  /* ================= quiz settings (create + edit) ================= */
-  function dtVal(id) { // datetime-local string -> ms (or null when empty)
+  function dtVal(id) {
     var v = document.getElementById(id).value;
     if (!v) return null;
     var d = new Date(v);
     return isNaN(d.getTime()) ? null : d.getTime();
   }
-  function dtSet(id, ts) { // ms -> datetime-local string
+  function dtSet(id, ts) {
     var el = document.getElementById(id);
     if (!ts) { el.value = ''; return; }
     var d = new Date(ts);
@@ -408,7 +403,6 @@
     btn.disabled = false;
   };
 
-  /* ================= question picture ================= */
   var pendingImg = '';
   var imgBtn = document.getElementById('imgBtn');
   var imgFile = document.getElementById('imgFile');
@@ -450,7 +444,6 @@
     rd.readAsDataURL(f);
   };
 
-  /* ================= question list ================= */
   var TYPE_LABEL = { single: 'Single choice', multiple: 'Multiple response', truefalse: 'True / False' };
   function renderList() {
     var drafts = questions.filter(function (q) { return q.draft; });
@@ -459,11 +452,11 @@
       live.length + (drafts.length ? ' · ' + drafts.length + ' draft' + (drafts.length > 1 ? 's' : '') : '');
     var el = document.getElementById('qlist');
     if (!questions.length) {
-      el.innerHTML = '<p class="muted small" style="padding:14px 4px">No questions yet. Use the form to add the first one.</p>';
+      el.innerHTML = '<p class="muted small" style="padding:14px 4px">No questions yet.</p>';
       return;
     }
     el.innerHTML = questions.map(function (q, i) {
-      var opts = q.draft ? '<div class="oo muted">Incomplete — finish before it goes live</div>'
+      var opts = q.draft ? '<div class="oo muted">Incomplete</div>'
         : (q.options || []).map(function (o, oi) {
             var correct = q.type === 'multiple' ? q.answer.indexOf(oi) >= 0 : q.answer === oi;
             return '<div class="oo' + (correct ? ' correct' : '') + '">' + LETTER(oi) + '. ' + esc(o) + '</div>';
@@ -488,7 +481,7 @@
     $$('[data-finish]', el).forEach(function (b) {
       b.onclick = function () {
         startEdit(questions.find(function (q) { return q.id === b.getAttribute('data-finish'); }));
-        toast('Complete the details, then press "Save question" to make it live', 'info');
+        toast('Complete the required details', 'info');
       };
     });
     $$('[data-rm]', el).forEach(function (b) {
@@ -510,7 +503,6 @@
     });
   }
 
-  /* ================= editor ================= */
   var editingId = null, editingDraft = false;
   var fType = document.getElementById('fType');
   var fText = document.getElementById('fText');
@@ -558,7 +550,6 @@
   }
   document.getElementById('addOptBtn').onclick = function () { addOptRow('', false); autosaveForm(); };
 
-  /* ---- form autosave: never lose a half-written question ---- */
   var asTimer = null;
   function autosaveForm() {
     clearTimeout(asTimer);
@@ -584,7 +575,7 @@
   function restoreForm() {
     var raw = null;
     try { raw = Store.getItem(formKey); } catch (e) {}
-    if (!raw) { resetForm(); return; } // fresh form: lay out the default option rows
+    if (!raw) { resetForm(); return; }
     try {
       var f = JSON.parse(raw);
       if (!f || (!f.text && !f.opts)) { resetForm(); return; }
@@ -598,7 +589,7 @@
       (f.opts && f.opts.length ? f.opts : [{}, {}, {}, {}]).forEach(function (o) { addOptRow(o.v, o.c); });
       syncTypeUI();
       document.getElementById('draftNote').hidden = false;
-      document.getElementById('draftNote').textContent = 'Unsaved question restored — press Save to keep it, or the X button to discard.';
+      document.getElementById('draftNote').textContent = 'Unsaved question restored.';
     } catch (e) {}
   }
   function clearAutosave() { try { Store.removeItem(formKey); } catch (e) {} }
@@ -627,7 +618,7 @@
     document.getElementById('resetBtn').hidden = false;
     if (q.draft) {
       document.getElementById('draftNote').hidden = false;
-      document.getElementById('draftNote').textContent = 'This question is a draft — complete it and press "Save question" to make it live for students.';
+      document.getElementById('draftNote').textContent = 'Draft question.';
     } else {
       document.getElementById('draftNote').hidden = true;
     }
@@ -678,8 +669,8 @@
       if (c.type !== 'truefalse') {
         if (c.opts.length < 2) return showFormErr('Provide at least 2 options.');
         if (c.opts.some(function (o) { return !o; })) return showFormErr('Option text cannot be empty — remove unused option rows.');
-        if (c.type === 'single' && answer < 0) return showFormErr('Click the check circle next to the correct option.');
-        if (c.type === 'multiple' && !answer.length) return showFormErr('Mark at least one correct option with the check circle.');
+        if (c.type === 'single' && answer < 0) return showFormErr('Mark the correct option.');
+        if (c.type === 'multiple' && !answer.length) return showFormErr('Mark at least one correct option.');
       }
     } else if (!c.text.trim() && !c.opts.some(Boolean)) {
       return showFormErr('Add at least a question text or some options to save a draft.');

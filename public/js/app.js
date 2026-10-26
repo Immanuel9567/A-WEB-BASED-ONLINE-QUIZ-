@@ -1,12 +1,6 @@
-/* ============================================================================
-   ClassMark — shared client helpers
-   Icon pack: uniform inline SVG set (Feather-style, stroke-based, MIT).
-   No emojis anywhere — every glyph below comes from this one pack.
-   ============================================================================ */
 (function () {
   'use strict';
 
-  /* ---------------- icon pack (single, uniform 24×24 stroke set) ----------- */
   var P = {
     home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
     check: '<polyline points="20 6 9 17 4 12"/>',
@@ -73,7 +67,6 @@
       'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || P.info) + '</svg>';
   };
 
-  /* ---------------- brand mark + stat card (shared design components) ----- */
   var BRANDMARK = '<span class="brand-mark">' + icon('check', 17) + '</span>';
   window.statCard = function (ic, num, lbl, sub, variant, href) {
     var inner =
@@ -86,7 +79,6 @@
     return href ? '<a class="stat" href="' + href + '">' + inner + '</a>' : '<div class="stat">' + inner + '</div>';
   };
 
-  /* ---------------- token storage (localStorage w/ safe fallback) --------- */
   var Store = (function () {
     try {
       localStorage.setItem('__oqas_test', '1');
@@ -105,7 +97,6 @@
   window.getToken = function () { return Store.getItem('oqas_token'); };
   window.setToken = function (t) { t ? Store.setItem('oqas_token', t) : Store.removeItem('oqas_token'); };
 
-  /* ---------------- API wrapper ------------------------------------------- */
   async function api(path, opts) {
     opts = opts || {};
     var headers = { 'Content-Type': 'application/json' };
@@ -127,7 +118,6 @@
   window.PUT = function (p, b) { return api(p, { method: 'PUT', body: JSON.stringify(b || {}) }); };
   window.DEL = function (p) { return api(p, { method: 'DELETE', body: '{}' }); };
 
-  /* ---------------- formatting helpers ----------------------------------- */
   window.$ = function (s, r) { return (r || document).querySelector(s); };
   window.$$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   window.esc = function (s) {
@@ -162,7 +152,6 @@
     return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
   };
 
-  /* ---------------- password visibility toggle ---------------------------- */
   window.pwField = function (inputId) {
     var input = document.getElementById(inputId);
     if (!input || input.getAttribute('data-pw')) return;
@@ -186,13 +175,12 @@
     wrap.appendChild(btn);
   };
 
-  /* ---------------- sound alert (Web Audio, no files) ---------------------- */
   var audioCtx = null;
   window.ding = function () {
-    if (Store.getItem('oqas_sound') === '0') return; // muted
+    if (Store.getItem('oqas_sound') === '0') return;
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') return; // waits for first user gesture
+      if (audioCtx.state === 'suspended') return;
       var t0 = audioCtx.currentTime;
       [[880, 0], [1174.7, 0.12]].forEach(function (tone) {
         var o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -204,9 +192,9 @@
         o.connect(g); g.connect(audioCtx.destination);
         o.start(t0 + tone[1]); o.stop(t0 + tone[1] + 0.55);
       });
-    } catch (e) { /* audio unavailable */ }
+    } catch (e) {  }
   };
-  // browsers block audio until the user interacts once — unlock on first gesture
+
   document.addEventListener('pointerdown', function unlock() {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -214,7 +202,6 @@
     } catch (e) {}
   }, { once: true, capture: true });
 
-  /* ---------------- auth guard ------------------------------------------- */
   window.requireLogin = async function (role) {
     var me = null;
     try { me = await GET('/api/auth/me'); } catch (e) {}
@@ -229,7 +216,6 @@
     return me.user;
   };
 
-  /* ---------------- sidebar (+ teacher notification bell) ----------------- */
   var navUser = null, navActive = null;
   window.navbar = function (user, active) {
     var el = document.getElementById('nav');
@@ -268,7 +254,7 @@
       '<a href="#" id="bnMenu">' + icon('menu', 19) + '<span>Menu</span></a>'
     ];
 
-    document.body.classList.remove('sb-open'); // drawer never survives a re-render
+    document.body.classList.remove('sb-open');
 
     el.innerHTML =
       '<aside class="sidebar">' +
@@ -311,7 +297,7 @@
     if (profileBtn) profileBtn.onclick = function () {
       document.body.classList.remove('sb-open');
       editProfile(navUser).then(function (u) {
-        if (u) navbar(u, navActive); // re-render sidebar with the new name — no page refresh
+        if (u) navbar(u, navActive);
       });
     };
     var topAvatar = document.getElementById('topAvatar');
@@ -326,7 +312,6 @@
     fillSidebarClasses(user);
     setupBell(user);
 
-    // collapsible sidebar (desktop) — state remembered
     var sbToggle = document.getElementById('sbToggle');
     var sbMin = Store.getItem('oqas_sbmin') === '1';
     document.body.classList.toggle('sb-min', sbMin);
@@ -342,7 +327,6 @@
       sbToggle.innerHTML = icon(sbMin ? 'chevronRight' : 'chevronsLeft', 18);
     }
 
-    /* mobile drawer: hamburger slides the side menu over the page */
     var sbMenu = document.getElementById('sbMenu');
     var sbBackdrop = document.getElementById('sbBackdrop');
     function closeDrawer() { document.body.classList.remove('sb-open'); }
@@ -371,7 +355,7 @@
         lbl.hidden = false;
         box.innerHTML = items.join('');
       }
-    } catch (e) { /* not signed in or offline — leave hidden */ }
+    } catch (e) {  }
   }
 
   function notifIcon(type) {
@@ -457,7 +441,7 @@
         e.stopPropagation();
         var nowOn = Store.getItem('oqas_sound') !== '0';
         Store.setItem('oqas_sound', nowOn ? '0' : '1');
-        if (!nowOn) ding(); // confirmation chime when re-enabling
+        if (!nowOn) ding();
         refresh();
       };
     }
@@ -469,9 +453,6 @@
       });
     }
 
-    /* seen-state persisted across page reloads, so nothing pops up twice and
-       nothing is missed after a refresh — notifications created since the
-       teacher's last visit still pop (with sound) when they come back */
     var seenAt = Number(Store.getItem('oqas_seenat') || 0);
     if (!seenAt) { Store.setItem('oqas_seenat', String(Date.now())); seenAt = Date.now(); }
 
@@ -507,7 +488,7 @@
         var d = await GET('/api/notifications');
         paintDot(d.unread);
         if (open) renderPanel(d);
-        // pop up (and sound) everything that happened since the last visit
+
         var fresh = [];
         d.groups.forEach(function (g) {
           g.items.forEach(function (n) { if (n.createdAt > seenAt) fresh.push({ n: n, color: g.color }); });
@@ -519,7 +500,7 @@
           var newestTs = Math.max.apply(null, fresh.map(function (f) { return f.n.createdAt; }));
           if (newestTs > seenAt) { seenAt = newestTs; Store.setItem('oqas_seenat', String(seenAt)); }
         }
-      } catch (e) { /* signed out or offline — ignore */ }
+      } catch (e) {  }
     }
 
     async function markAllRead() {
@@ -531,26 +512,23 @@
     if (window.__oqasBellTimer) clearInterval(window.__oqasBellTimer);
     window.__oqasBellTimer = setInterval(function () { if (!document.hidden) refresh(); }, 5000);
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) refresh(); // catch up the moment the tab is seen again
+      if (!document.hidden) refresh();
     });
   }
 
-  /* ---------------- profile editing modal --------------------------------- */
-  /* tap-to-copy (join codes etc.) — clipboard API with a toast fallback */
   window.copyText = function (text, label) {
     var msg = (label ? label + ' — ' : 'Copied — ') + text;
     try { navigator.clipboard.writeText(text); toast(msg); }
     catch (e) { toast(msg, 'info'); }
   };
 
-  /* ---- custom dropdowns: themed popups for <select> (the native popup cannot be styled) ---- */
-  var ddClose = null; // the currently open dropdown's close function
+  var ddClose = null;
   function ddEnhance(sel) {
     if (sel.__dd) return;
     sel.__dd = true;
     var wrap = document.createElement('div');
     wrap.className = 'dd';
-    wrap.style.cssText = sel.style.cssText; // keep layout hints like flex:1 on the wrapper
+    wrap.style.cssText = sel.style.cssText;
     sel.style.cssText = '';
     sel.parentNode.insertBefore(wrap, sel);
     wrap.appendChild(sel);
@@ -632,16 +610,14 @@
       else if (e.key === 'Tab') close();
     });
     sel.addEventListener('change', sync);
-    new MutationObserver(sync).observe(sel, { childList: true }); // page code repopulates options
+    new MutationObserver(sync).observe(sel, { childList: true });
     sync();
   }
   function ddEnhanceAll() { $$('select').forEach(ddEnhance); }
   document.addEventListener('click', function () { if (ddClose) ddClose(); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ddEnhanceAll);
   else ddEnhanceAll();
-  /* ---- end custom dropdowns ---- */
 
-  /* quiz availability window: 'upcoming' | 'open' | 'closed' */
   window.winState = function (q) {
     var t = Date.now();
     if (q.opensAt && t < q.opensAt) return 'upcoming';
@@ -698,7 +674,7 @@
           var newName = ov.querySelector('#pfName').value;
           var newEmail = ov.querySelector('#pfEmail').value;
           var newPw = ov.querySelector('#pfNew').value;
-          var sensitive = newEmail !== user.email || !!newPw; // a plain rename needs no password
+          var sensitive = newEmail !== user.email || !!newPw;
           var r = await PUT('/api/auth/profile', {
             name: newName,
             email: newEmail,
@@ -716,7 +692,6 @@
     });
   };
 
-  /* ---------------- toast -------------------------------------------------- */
   window.toast = function (msg, type) {
     var t = document.createElement('div');
     t.className = 'toast';
@@ -726,7 +701,6 @@
     setTimeout(function () { t.classList.remove('in'); setTimeout(function () { t.remove(); }, 350); }, 3200);
   };
 
-  /* ---------------- confirm dialog ---------------------------------------- */
   window.confirmModal = function (opts) {
     opts = opts || {};
     return new Promise(function (resolve) {

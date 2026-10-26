@@ -23,8 +23,8 @@
         <p class="sub" id="cMeta">Loading…</p>
       </div>
       <div id="headCode" hidden>
-        <div class="small muted" style="margin-bottom:5px"><b>Class join code</b> — tap to copy</div>
-        <div class="codebox"><span class="code codebig" id="cCode" style="font-size:26px;font-weight:700;cursor:pointer" title="Copy the join code"></span><button class="btn sm" id="copyCode"></button></div>
+        <div class="small muted" style="margin-bottom:5px"><b>Class join code</b></div>
+        <div class="codebox"><span class="code codebig" id="cCode" style="font-size:26px;font-weight:700;cursor:pointer" title="Copy"></span><button class="btn sm" id="copyCode"></button></div>
       </div>
     </div>
   </section>
@@ -39,7 +39,6 @@
     <div class="card skeleton">Loading…</div>
   </section>
 
-  <!-- teacher-owner: manage students -->
   <h2 class="sec" id="memHead" hidden>Manage students</h2>
   <section class="card tablecard" id="memCard" hidden>
     <table>
@@ -55,7 +54,6 @@
   <p style="margin:26px 2px 50px"></p>
 </main>
 
-<!-- ============ class settings modal (owner) ============ -->
 <div class="overlay" id="clsOverlay" hidden>
   <div class="modal">
     <h3>Class settings</h3>
@@ -75,7 +73,6 @@
   </div>
 </div>
 
-<!-- ============ course modal (owner) ============ -->
 <div class="overlay" id="crsOverlay" hidden>
   <div class="modal">
     <h3>Rename course</h3>
@@ -107,7 +104,7 @@
   document.getElementById('clsSettings').innerHTML = icon('sliders', 15) + ' Settings';
 
   var c = null, owner = false, d = null;
-  var sortKey = 'active', sortDir = -1; // members table sorting (teacher)
+  var sortKey = 'active', sortDir = -1;
   var MKEYS = {
     name: function (m) { return m.name.toLowerCase(); },
     quizzes: function (m) { return m.quizzesTaken; },
@@ -150,7 +147,6 @@
       ' · ' + (d.courses || []).length + ' course' + ((d.courses || []).length === 1 ? '' : 's') +
       ' · ' + d.quizzes.length + ' class quiz' + (d.quizzes.length === 1 ? '' : 'zes');
 
-    /* ---- owner extras: code card, settings button, manage students ---- */
     document.getElementById('clsSettings').hidden = !owner;
     document.getElementById('headCode').hidden = !owner;
     if (owner) {
@@ -188,7 +184,6 @@
       }
     }
 
-    /* ---- stats ---- */
     var published = d.quizzes.filter(function (q) { return q.published; });
     var withAvg = published.filter(function (q) { return q.avgPercent != null; });
     var clsAvg = withAvg.length ? Math.round(withAvg.reduce(function (s, q) { return s + q.avgPercent; }, 0) / withAvg.length * 10) / 10 : null;
@@ -201,7 +196,6 @@
     renderQuizzes();
   }
 
-  /* ---- courses: everyone filters by tapping; the owner also creates / renames / deletes ---- */
   var crsFilter = null;
   function renderCourses() {
     var el = document.getElementById('crsCard');
@@ -262,7 +256,6 @@
     });
   }
 
-  /* ---- quizzes of the class (optionally filtered to one course) ---- */
   function renderQuizzes() {
     var qEl = document.getElementById('quizzes');
     var shown = crsFilter ? d.quizzes.filter(function (q) { return (q.courses || []).some(function (x) { return x.id === crsFilter; }); }) : d.quizzes;
@@ -290,7 +283,7 @@
             (q.waitingCount
               ? '<button class="btn sm primary" data-startqz="' + q.id + '" data-name="' + esc(q.title) + '" data-n="' + q.waitingCount + '">' + icon('zap', 13) + ' Start quiz</button>' +
                 '<span class="chip">' + icon('clock', 13) + ' ' + q.waitingCount + ' waiting</span>'
-              : '<span class="small muted">' + icon('clock', 13) + ' Students enter and wait for your start — <a href="insights.html?id=' + q.id + '"><b>open the waiting room</b></a></span>') +
+              : '<span class="small muted">' + icon('clock', 13) + ' <a href="insights.html?id=' + q.id + '"><b>Open the waiting room</b></a></span>') +
             '</div>'
           : (q.startedAt ? '<div class="row small muted" style="margin-top:8px">' + icon('lock', 13) + ' Started ' + fmtWhen(q.startedAt) + ' — join is closed</div>' : '')) +
         (q.opensAt || q.closesAt ? '<div class="row small muted" style="margin-top:8px">' + icon('timer', 14) + ' ' +
@@ -370,7 +363,6 @@
     });
   }
 
-  /* ---- kick a student out of the class ---- */
   function wireKick() {
     $$('[data-kick]').forEach(function (b) {
       b.onclick = async function () {
@@ -391,7 +383,6 @@
     });
   }
 
-  /* ---- class settings: colour + rename ---- */
   var ov = document.getElementById('clsOverlay');
   document.getElementById('clsSettings').onclick = function () {
     pickedColor = c.color || null;
@@ -434,7 +425,6 @@
   document.getElementById('copyCode').onclick = function () { copyText(c.code, 'Class code copied'); };
   document.getElementById('cCode').onclick = function () { copyText(c.code, 'Class code copied'); };
 
-  /* ---- course rename modal ---- */
   var crsOv = document.getElementById('crsOverlay');
   var crsEditId = null;
   function openCourseModal(id, name) {

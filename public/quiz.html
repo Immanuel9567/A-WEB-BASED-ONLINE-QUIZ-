@@ -35,7 +35,6 @@
     <h2>Waiting for teacher to start</h2>
     <p class="muted" id="waitTxt"></p>
     <div class="waitdots"><i></i><i></i><i></i></div>
-    <p class="small muted">You are checked in. Keep this page open.</p>
   </div>
 
   <div class="qwrap">
@@ -79,7 +78,7 @@
     setTimeout(function () { location.href = 'dashboard.html'; }, 1200);
     return;
   }
-  while (data.attempt.status === 'waiting') { // checked in — waiting for the teacher to start
+  while (data.attempt.status === 'waiting') {
     paintWaiting(data.quiz);
     await new Promise(function (r) { setTimeout(r, 2500); });
     try { data = await GET('/api/attempts/' + attemptId); }
@@ -115,7 +114,6 @@
   document.getElementById('prevBtn').innerHTML = icon('chevronLeft', 15) + ' Previous';
   document.getElementById('nextBtn').innerHTML = 'Next ' + icon('chevronRight', 15);
 
-  /* server/client clock offset keeps the countdown honest */
   var offset = data.serverNow - Date.now();
   var remainSec = function () { return (A.endsAt - (Date.now() + offset)) / 1000; };
 
@@ -123,7 +121,6 @@
   document.getElementById('qMeta').textContent =
     quiz.subject + ' · ' + questions.length + ' questions · pass mark ' + quiz.passMark + '%';
 
-  /* ---------------- palette ---------------- */
   var pal = document.getElementById('palette');
   pal.innerHTML = questions.map(function (q, i) {
     return '<button class="dot" data-i="' + i + '" title="Question ' + (i + 1) + '">' + (i + 1) + '</button>';
@@ -132,7 +129,6 @@
     b.onclick = function () { gotoQ(Number(b.getAttribute('data-i'))); };
   });
 
-  /* ---------------- render question ---------------- */
   function gotoQ(i) {
     idx = Math.max(0, Math.min(questions.length - 1, i));
     var q = questions[idx];
@@ -177,11 +173,10 @@
     } else {
       answers[q.id] = oi;
     }
-    gotoQ(idx); // re-render selection
+    gotoQ(idx);
     queueSave(q.id, answers[q.id]);
   }
 
-  /* ---------------- autosave ---------------- */
   function queueSave(qid, val) {
     var pill = document.getElementById('savepill');
     pill.hidden = false;
@@ -197,7 +192,6 @@
     }, 350);
   }
 
-  /* ---------------- progress / palette state ---------------- */
   function answeredCount() {
     return questions.filter(function (q) {
       var v = answers[q.id];
@@ -216,7 +210,6 @@
     });
   }
 
-  /* ---------------- timer ---------------- */
   var timerEl = document.getElementById('timer');
   var tick = setInterval(function () {
     var s = remainSec();
@@ -233,7 +226,6 @@
     }, 250);
   }
 
-  /* ---------------- integrity: tab-switch policy (server-enforced) --------- */
   function showTabWarn(msg) {
     var w = document.getElementById('tabwarn');
     w.hidden = false;
@@ -241,7 +233,7 @@
   }
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden || submitting) return;
-    if (quiz.tabSwitchPolicy === 'off') return; // teacher disabled monitoring
+    if (quiz.tabSwitchPolicy === 'off') return;
     tabSwitches++;
     if (quiz.tabSwitchPolicy === 'autosubmit') {
       showTabWarn('Tab switch detected — this quiz auto-submits on tab switching. Submitting your answers now…');
@@ -259,7 +251,6 @@
     if (!submitting) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  /* ---------------- submit ---------------- */
   async function doSubmit(auto) {
     if (submitting) return;
     submitting = true;

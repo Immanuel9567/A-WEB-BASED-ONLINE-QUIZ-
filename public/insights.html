@@ -26,7 +26,6 @@
     <button class="tab" data-tab="analytics">Analytics</button>
   </div>
 
-  <!-- ================= MONITOR ================= -->
   <section id="tab-monitor">
     <div class="card tight" id="waitRoomCard" hidden>
       <div class="row" style="gap:14px;flex-wrap:wrap;align-items:center">
@@ -53,12 +52,7 @@
     </div>
   </section>
 
-  <!-- ================= RESULTS ================= -->
   <section id="tab-results" hidden>
-    <div class="row" style="margin-bottom:14px">
-      <span class="muted small">All graded attempts for this quiz, newest first.</span>
-      <span class="spacer"></span>
-    </div>
     <section class="card tablecard">
       <table>
         <thead><tr>
@@ -70,7 +64,6 @@
     </section>
   </section>
 
-  <!-- ================= ANALYTICS ================= -->
   <section id="tab-analytics" hidden>
     <section class="statgrid" id="anStats"></section>
 
@@ -89,9 +82,6 @@
         <tbody id="itemRows"></tbody>
       </table>
     </section>
-    <p class="small muted" style="margin:10px 2px 0">
-      Facility index = fraction of candidates who answered correctly. 70% and above is easy, 40–69% moderate, below 40% hard.
-    </p>
 
     <h2 class="sec">Leaderboard (best attempt per student)</h2>
     <section class="card" style="max-width:680px">
@@ -112,7 +102,6 @@
   var quizId = new URLSearchParams(location.search).get('id');
   if (!quizId) { location.href = 'teacher.html'; return; }
 
-  /* ---- tabs ---- */
   var active = 'monitor';
   $$('.tab').forEach(function (t) {
     t.onclick = function () {
@@ -127,9 +116,8 @@
     };
   });
 
-  /* ---- header ---- */
   var mon = null, monOffset = 0, monTimer = null, resRows = [];
-  var monFilters = new Set(); // status filters: click filters, click again unfiltered
+  var monFilters = new Set();
 
   var FILTERS = [
     ['waiting', 'Waiting', 'clock'],
@@ -143,7 +131,7 @@
     var counts = { waiting: s.waiting, in_progress: s.inProgress, submitted: s.submitted, expired: s.expired };
     var html = pill(icon('users', 14) + ' ' + s.total + ' attempts', '');
     FILTERS.forEach(function (f) {
-      html += '<button type="button" class="chip filter' + (monFilters.has(f[0]) ? ' on' : '') + '" data-f="' + f[0] + '" title="Click to filter, click again to unfilter">' +
+      html += '<button type="button" class="chip filter' + (monFilters.has(f[0]) ? ' on' : '') + '" data-f="' + f[0] + '">' +
         icon(f[2], 14) + ' ' + f[1] + ' · ' + counts[f[0]] + '</button>';
     });
     html += pill(icon('barChart', 14) + ' avg ' + fmtPct(s.avgPercent), '');
@@ -176,7 +164,6 @@
     } else ns.hidden = true;
   }
 
-  /* ================= waiting room: the teacher starts the quiz for everyone ================= */
   function renderWaitRoom() {
     var card = document.getElementById('waitRoomCard');
     var btn = document.getElementById('startQuizBtn');
@@ -198,7 +185,6 @@
     };
   }
 
-  /* ================= LIVE MONITOR (poll @2s) ================= */
   async function loadMon() {
     try {
       mon = await GET('/api/quizzes/' + quizId + '/monitor');
@@ -249,7 +235,6 @@
 
   function pill(html, accent) { return '<span class="chip"' + (accent ? ' style="background:#e8f0fe;color:#174ea6"' : '') + '>' + html + '</span>'; }
 
-  /* ================= RESULTS + CSV ================= */
   async function loadResults() {
     try {
       var r = await GET('/api/quizzes/' + quizId + '/attempts');
@@ -277,7 +262,6 @@
     } catch (err) { toast(err.message, 'bad'); }
   }
 
-  /* ================= ANALYTICS ================= */
   async function loadAnalytics() {
     try {
       var r = await GET('/api/quizzes/' + quizId + '/analytics');

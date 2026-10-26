@@ -33,9 +33,6 @@
     </table>
   </section>
 
-  <p class="small muted" style="margin:12px 2px 50px">
-    Click View to review your answers for any attempt. Results appear here the moment you submit.
-  </p>
 </main>
 
 <script src="js/app.js"></script>
@@ -44,13 +41,12 @@
   var user = await requireLogin('student');
   navbar(user, 'results');
   document.getElementById('welcome').textContent =
-    'Every quiz you have submitted, ' + user.name.split(' ')[0] + ' — newest first.';
+    'Every quiz you have submitted, ' + user.name.split(' ')[0] + '.';
   document.getElementById('backBtn').innerHTML = icon('chevronLeft', 15) + ' Dashboard';
 
   var data = await GET('/api/me/attempts');
   var mine = data.attempts.filter(function (a) { return a.status !== 'in_progress' && a.status !== 'waiting'; });
 
-  /* ---- summary cards ---- */
   var avg = mine.length ? Math.round(mine.reduce(function (s, a) { return s + a.percent; }, 0) / mine.length * 10) / 10 : null;
   var best = mine.length ? Math.max.apply(null, mine.map(function (a) { return a.percent; })) : null;
   var passes = mine.filter(function (a) { return a.passed; }).length;
@@ -60,7 +56,6 @@
     statCard('trophy', fmtPct(best), 'My best score', '', 'mint') +
     statCard('checkCircle', passes + '/' + mine.length, 'Passed', 'attempts that met the pass mark');
 
-  /* ---- history table ---- */
   var rEl = document.getElementById('resultsBody');
   if (!mine.length) {
     rEl.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="eico">' + icon('fileText', 34) + '</div>' +

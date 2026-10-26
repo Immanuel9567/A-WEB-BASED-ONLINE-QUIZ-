@@ -1,17 +1,3 @@
-/* ============================================================================
-   ClassMark — Online Quiz & Assessment System
-   ----------------------------------------------------------------------------
-   A web-based quiz delivery platform with:
-     • Role-based access (teacher / student)
-     • Timed, server-authoritative quiz attempts
-     • Automated grading the instant a student submits (or when time expires)
-     • Real-time monitoring of in-progress attempts (lightweight polling)
-     • Analytics: score distribution, pass rate and per-question item analysis
-   ----------------------------------------------------------------------------
-   Stack: Node.js (built-in http / fs / crypto) + better-sqlite3 for storage.
-   Storage: SQLite database (data/classmark.db), mirrored to JSON (data/db.json)
-            and backed up encrypted to a private cloud git branch or Supabase table.
-   ============================================================================ */
 'use strict';
 
 const http   = require('http');
@@ -24,16 +10,12 @@ const PUB           = path.join(__dirname, 'public');
 const DB_FILE       = path.join(__dirname, 'data', 'db.json');
 const SQL_FILE      = path.join(__dirname, 'data', 'classmark.db');
 
-/* Serverless mode (Vercel): the platform sets VERCEL=1 automatically. There is no
-   long-lived process and no disk that survives, so Supabase IS the database — the
-   encrypted state is loaded per request and saved back with optimistic versioning. */
 const SERVERLESS = !!(process.env.VERCEL || process.env.OQAS_SERVERLESS);
-let sbVersion = 0;    // version of the Supabase state row currently loaded into db
-let sbDirty = false;  // saveDb() ran during the request being served
-const GRACE_MS      = 15000;                 // network grace window after timer ends
-const SESSION_TTL   = 90 * 24 * 3600 * 1000; // 90 days — persistent logins
+let sbVersion = 0;
+let sbDirty = false;
+const GRACE_MS      = 15000;
+const SESSION_TTL   = 90 * 24 * 3600 * 1000;
 
-/* ---------------------------------------------------------------- utilities */
 const uid    = (p) => p + '_' + crypto.randomBytes(6).toString('hex');
 const now    = () => Date.now();
 const sha    = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -44,7 +26,7 @@ const byId   = (arr, id) => arr.find((x) => x.id === id);
 function publicUser(u) {
   return u && { id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt };
 }
-function meta(q) { // safe quiz summary (no answers involved)
+function meta(q) {
   return q && {
     id: q.id, title: q.title, subject: q.subject, description: q.description,
     durationMin: q.durationMin, passMark: q.passMark, attemptsAllowed: q.attemptsAllowed,
@@ -55,17 +37,13 @@ function meta(q) { // safe quiz summary (no answers involved)
     startedAt: q.startedAt || null
   };
 }
-function publicQuestion(q) { // what a student may see BEFORE grading
+function publicQuestion(q) {
   return q && { id: q.id, type: q.type, text: q.text, options: q.options, points: q.points, img: q.img || '' };
 }
 
-/* ------------------------------------------------------------- data & seed  */
 let db;
-let dbSeeded = false; // true when this boot started empty (no sqlite store, no JSON file)
+let dbSeeded = false;
 
-/* --- SQLite (primary store). One row per entity; JSON kept for cloud backup + mirror.
-       If better-sqlite3 is ever unavailable the app transparently falls back to the
-       JSON file alone, so the server still boots. --- */
 const SQL_COLLECTIONS = ['users', 'classes', 'courses', 'quizzes', 'attempts', 'notifications'];
 const SQL_MAPS = ['questions', 'sessions'];
 let sql = null;
@@ -91,7 +69,7 @@ function sqlOpen() {
   }
 }
 
-function sqlLoad() { // rebuild the in-memory document from the database
+function sqlLoad() {
   const out = { users: [], classes: [], courses: [], quizzes: [], attempts: [], notifications: [], questions: {}, sessions: {}, updatedAt: 0 };
   if (!sql) return out;
   for (const col of SQL_COLLECTIONS) {
@@ -106,7 +84,7 @@ function sqlLoad() { // rebuild the in-memory document from the database
   return out;
 }
 
-function sqlSaveAll() { // whole-document rewrite inside one transaction (atomic, small data)
+function sqlSaveAll() {
   const tx = sql.transaction(() => {
     for (const col of SQL_COLLECTIONS) {
       sql.prepare('DELETE FROM rows WHERE col = ?').run(col);
@@ -126,20 +104,20 @@ function sqlSaveAll() { // whole-document rewrite inside one transaction (atomic
 
 function saveDb() {
   db.updatedAt = now();
-  if (SERVERLESS) { sbDirty = true; return; } // saved back to Supabase after the response is computed
+  if (SERVERLESS) { sbDirty = true; return; }
   if (sql) {
     try { sqlSaveAll(); } catch (e) { console.error('sqlite: write failed -', e.message); }
   }
-  // JSON mirror: human-readable copy + the format the encrypted cloud backup uses
+
   fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
   const tmp = DB_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 1));
-  fs.renameSync(tmp, DB_FILE); // atomic replace
-  scheduleCloudSave(); // debounced push to cloud storage (no-op when not connected)
+  fs.renameSync(tmp, DB_FILE);
+  scheduleCloudSave();
 }
 
 function seed() {
-  // fresh install: completely empty — the first teacher registers from the login page
+
   db = { users: [], classes: [], courses: [], quizzes: [], questions: {}, attempts: [], notifications: [], sessions: {} };
 }
 
@@ -154,30 +132,25 @@ function loadDb() {
     }
   }
   let imported = false;
-  // first run of the new engine (or a newer JSON file): import it — never wipe data
+
   try {
     const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     if (j && Array.isArray(j.users) && (!fromSql || (j.updatedAt || 0) > (db.updatedAt || 0) + 1000)) {
       db = j; imported = true;
       console.log('sqlite: importing the JSON store (' + db.users.length + ' users, ' + (db.quizzes || []).length + ' quizzes) — existing data is migrated, not wiped');
     }
-  } catch (e) { /* no usable JSON file */ }
+  } catch (e) {  }
   if (!fromSql && !imported) { seed(); dbSeeded = true; }
-  if (!db.notifications) db.notifications = []; // migration for older stores
-  if (!db.classes) db.classes = []; // migration for older stores
-  if (!Array.isArray(db.courses)) db.courses = []; // class -> course -> quiz model
-  if (migrateModel() || imported) saveDb(); // persist import + model upgrade into sqlite
+  if (!db.notifications) db.notifications = [];
+  if (!db.classes) db.classes = [];
+  if (!Array.isArray(db.courses)) db.courses = [];
+  if (migrateModel() || imported) saveDb();
 }
 
-/** Upgrade older data to the class -> course -> quiz model. Idempotent — safe on every boot.
-    • every teacher ends up owning at least one class ("My Class")
-    • every quiz ends up inside a course of one of the teacher's classes
-    • legacy quizzes shared across several classes are cloned into the extra classes
-      so nothing a student could see before disappears. */
 function migrateModel() {
   let changed = false;
   if (!Array.isArray(db.courses)) { db.courses = []; changed = true; }
-  for (const q of db.quizzes) { // quizzes are single-attempt — always were meant to be sat once
+  for (const q of db.quizzes) {
     if (q.attemptsAllowed !== 1) { q.attemptsAllowed = 1; changed = true; }
   }
   const findTeacher = (ref) => byId(db.users, ref) || db.users.find((u) => u.email === ref) || null;
@@ -194,7 +167,7 @@ function migrateModel() {
     return x;
   };
   for (const q of db.quizzes) {
-    if (courseIdsOf(q).length) { // already migrated — just drop the legacy single-course field
+    if (courseIdsOf(q).length) {
       if (q.courseId !== undefined) { q.courseIds = courseIdsOf(q); delete q.courseId; changed = true; }
       continue;
     }
@@ -204,9 +177,9 @@ function migrateModel() {
       const own = teacher ? db.classes.filter((c) => c.teacherId === teacher.id) : [];
       if (own.length) targets = [own[0].id];
     }
-    if (!targets.length) continue; // orphan with no resolvable owner — leave untouched
+    if (!targets.length) continue;
     const name = String(q.subject || '').trim() || 'General';
-    // one course per class the quiz lived in — a quiz may span courses, so no cloning any more
+
     q.courseIds = targets.map((t) => courseFor(t, name).id);
     q.classes = targets.slice();
     delete q.courseId;
@@ -215,7 +188,6 @@ function migrateModel() {
   return changed;
 }
 
-/* -------------------------------------------------------- grading engine    */
 function orderedQuestions(a) {
   const all = (db.questions[a.quizId] || []).filter((q) => !q.draft);
   if (!a.questionOrder) return all;
@@ -228,7 +200,6 @@ function sameSet(x, y) {
     x.length === y.length && x.every((v) => y.includes(v));
 }
 
-/** Grade an attempt: computes score, snapshot review with correct answers. */
 function finishAttempt(a) {
   const quiz = byId(db.quizzes, a.quizId);
   const qs = orderedQuestions(a);
@@ -256,11 +227,9 @@ function finishAttempt(a) {
   a.percent = maxScore ? Math.round((score / maxScore) * 1000) / 10 : 0;
   a.passed = quiz ? a.percent >= quiz.passMark : false;
   a.durationUsedSec = Math.max(1, Math.round(((a.submittedAt || now()) - a.startedAt) / 1000));
-  a.review = review; // snapshot for the result sheet
+  a.review = review;
 }
 
-/** Push a notification to the teacher who owns the quiz.
-    Types: 'submitted' | 'expired' | 'tabswitch' */
 function notifySubmission(quiz, a, type) {
   if (!quiz) return;
   const teacher = byId(db.users, quiz.createdBy);
@@ -275,10 +244,7 @@ function notifySubmission(quiz, a, type) {
   if (db.notifications.length > 400) db.notifications = db.notifications.slice(-400);
 }
 
-/** Background sweeper: auto-grade attempts whose time has expired.
-    This is what makes results "process in real time" even if a student
-    closes the browser without submitting. */
-const isDone = (a) => a.status !== 'in_progress' && a.status !== 'waiting'; // a finished, graded attempt
+const isDone = (a) => a.status !== 'in_progress' && a.status !== 'waiting';
 function expireStale() {
   let changed = false;
   for (const a of db.attempts) {
@@ -290,7 +256,7 @@ function expireStale() {
       changed = true;
     }
   }
-  // waiting room: a student whose quiz window closed never sat the test — release the hold
+
   const keep = db.attempts.filter((a) => {
     if (a.status !== 'waiting') return true;
     const q = byId(db.quizzes, a.quizId);
@@ -300,9 +266,8 @@ function expireStale() {
   db.attempts = keep;
   if (changed) saveDb();
 }
-setInterval(() => { try { expireStale(); } catch (e) { /* keep alive */ } }, 10000).unref();
+setInterval(() => { try { expireStale(); } catch (e) {  } }, 10000).unref();
 
-/* ------------------------------------------------------------- http basics  */
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.json': 'application/json',
@@ -359,7 +324,6 @@ function serveStatic(p, res) {
   });
 }
 
-/* ------------------------------------------------------- classes & visibility */
 function classPublic(c) {
   const t = byId(db.users, c.teacherId);
   return c && {
@@ -381,29 +345,29 @@ function genClassCode() {
 function myClassIds(u) {
   return db.classes.filter((c) => (c.studentIds || []).includes(u.id)).map((c) => c.id);
 }
-function courseIdsOf(q) { // a quiz can live in one or more courses
+function courseIdsOf(q) {
   const ids = Array.isArray(q.courseIds) && q.courseIds.length ? q.courseIds : (q.courseId ? [q.courseId] : []);
   return [...new Set(ids)].filter((id) => byId(db.courses, id));
 }
-function quizClassIds(q) { // the classes of every course the quiz lives in
+function quizClassIds(q) {
   const set = [...new Set(courseIdsOf(q).map((id) => byId(db.courses, id).classId))].filter((id) => byId(db.classes, id));
   if (set.length) return set;
-  return (q.classes || []).filter((id) => byId(db.classes, id)); // legacy fallback
+  return (q.classes || []).filter((id) => byId(db.classes, id));
 }
 function canSeeQuiz(u, q) {
   if (!u || u.role === 'teacher') return true;
-  return quizClassIds(q).some((id) => myClassIds(u).includes(id)); // class members only — never public
+  return quizClassIds(q).some((id) => myClassIds(u).includes(id));
 }
-function ownsQuiz(u, q) { // quizzes are private to the teacher that created them
+function ownsQuiz(u, q) {
   return !!q && (q.createdBy === u.id || q.createdBy === u.email);
 }
-function resolveCourse(courseId, teacher) { // the course's class must belong to this teacher
+function resolveCourse(courseId, teacher) {
   const crs = byId(db.courses, courseId);
   if (!crs) return null;
   const cls = byId(db.classes, crs.classId);
   return (cls && cls.teacherId === teacher.id) ? crs : null;
 }
-function resolveCourses(courseIds, teacher) { // one or more of the teacher's own courses
+function resolveCourses(courseIds, teacher) {
   const raw = Array.isArray(courseIds) ? courseIds : [courseIds];
   const out = [];
   for (const id of [...new Set(raw)].filter(Boolean)) {
@@ -413,7 +377,7 @@ function resolveCourses(courseIds, teacher) { // one or more of the teacher's ow
   }
   return out.length ? out : null;
 }
-function notifyQuizPublished(quiz, teacher) { // members of the quiz's class only
+function notifyQuizPublished(quiz, teacher) {
   const ids = new Set();
   for (const cid of quizClassIds(quiz)) {
     const c = byId(db.classes, cid);
@@ -427,7 +391,7 @@ function notifyQuizPublished(quiz, teacher) { // members of the quiz's class onl
     });
   }
 }
-function studentStat(u, teacher) { // aggregate performance for one student across THIS teacher's quizzes
+function studentStat(u, teacher) {
   const atts = db.attempts.filter((a) => {
     if (a.userId !== u.id) return false;
     const q = byId(db.quizzes, a.quizId);
@@ -446,13 +410,11 @@ function studentStat(u, teacher) { // aggregate performance for one student acro
   };
 }
 
-/* --------------------------------------------------------------- routing    */
 const routes = [];
 function route(method, pattern, handler) {
   routes.push({ method, re: new RegExp('^' + pattern + '$'), handler });
 }
 
-/* ======== AUTH ======== */
 route('POST', '/api/auth/register', async ({ body, res }) => {
   const name  = String(body.name || '').trim();
   const email = String(body.email || '').trim().toLowerCase();
@@ -466,8 +428,7 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: now() };
   db.users.push(user);
   if (role === 'teacher') {
-    // every teacher owns a class from the very first login — students join once with
-    // this code and automatically get every course the teacher creates in the class
+
     db.classes.push({
       id: uid('cls'), name: 'My Class', code: genClassCode(),
       teacherId: user.id, studentIds: [], createdAt: now()
@@ -476,7 +437,7 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   const token = crypto.randomBytes(24).toString('hex');
   db.sessions[token] = { userId: user.id, createdAt: now() };
   saveDb();
-  // a brand-new account must reach the cloud at once — no debounce window
+
   cloudSaveNow().catch((e) => console.error('cloud: register save failed -', e.message));
   send(res, 201, { token, user: publicUser(user) });
 });
@@ -505,9 +466,7 @@ route('GET', '/api/auth/me', async ({ user, res }) => {
   send(res, 200, { user: publicUser(user) });
 });
 
-/* ======== USERS (teacher) ======== */
-/* ======== QUIZZES ======== */
-function quizFor(q, user) { // meta + counters, personalised for the viewer
+function quizFor(q, user) {
   const classInfo = quizClassIds(q)
     .map((id) => byId(db.classes, id))
     .filter(Boolean)
@@ -546,10 +505,10 @@ route('GET', '/api/quizzes', async ({ user, res }) => {
   const out = [];
   for (const q of db.quizzes) {
     if (user.role === 'teacher') {
-      if (!ownsQuiz(user, q)) continue; // a teacher sees only the quizzes they created
+      if (!ownsQuiz(user, q)) continue;
     } else {
       if (!q.published) continue;
-      if (!canSeeQuiz(user, q)) continue; // class-scoped quiz
+      if (!canSeeQuiz(user, q)) continue;
     }
     out.push(quizFor(q, user));
   }
@@ -557,7 +516,7 @@ route('GET', '/api/quizzes', async ({ user, res }) => {
   send(res, 200, { quizzes: out });
 });
 
-function fmtTs(ts) { // server-side timestamp for window messages
+function fmtTs(ts) {
   return new Date(ts).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 function validQuizBody(body) {
@@ -572,7 +531,7 @@ function validQuizBody(body) {
     description: String(body.description || '').trim(),
     durationMin: clamp(Math.round(Number(body.durationMin) || 15), 1, 180),
     passMark: clamp(Math.round(Number(body.passMark) || 50), 0, 100),
-    attemptsAllowed: 1, // single attempt — every student sits the quiz once
+    attemptsAllowed: 1,
     shuffle: !!body.shuffle,
     shuffleOptions: !!body.shuffleOptions,
     tabSwitchPolicy: ['off', 'warn', 'autosubmit'].includes(body.tabSwitchPolicy) ? body.tabSwitchPolicy : 'warn',
@@ -620,7 +579,7 @@ route('POST', '/api/quizzes/([A-Za-z0-9_]+)/questions', async ({ user, params, b
 function validQuestion(body) {
   const type = ['single', 'multiple', 'truefalse'].includes(body.type) ? body.type : null;
   if (!type) return { error: 'Invalid question type.' };
-  const draft = !!body.draft; // drafts may be incomplete — they never reach students
+  const draft = !!body.draft;
   const text = String(body.text || '').trim();
   if (!draft && text.length < 3) return { error: 'Question text is too short.' };
   let options, answer;
@@ -714,7 +673,7 @@ route('PUT', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, body, res })
   quiz.courseIds = nextCourseIds;
   delete quiz.courseId;
   quiz.classes = nextClasses;
-  if (wasPublished && !quiz.published) { // pulled back — release everyone sitting in the waiting room
+  if (wasPublished && !quiz.published) {
     db.attempts = db.attempts.filter((a) => !(a.quizId === quiz.id && a.status === 'waiting'));
   }
   if (!wasPublished && quiz.published) notifyQuizPublished(quiz, user);
@@ -735,7 +694,6 @@ route('DELETE', '/api/quizzes/([A-Za-z0-9_]+)', async ({ user, params, res }) =>
   send(res, 200, { ok: true });
 });
 
-/* ======== ATTEMPTS (quiz taking) ======== */
 function attemptPayload(a) {
   const quiz = byId(db.quizzes, a.quizId);
   return {
@@ -744,7 +702,7 @@ function attemptPayload(a) {
     questions: orderedQuestions(a).map((q) => {
       const pq = publicQuestion(q);
       const perm = a.optionOrder && a.optionOrder[q.id];
-      if (perm) pq.options = perm.map((i) => q.options[i]); // display order maps to original index
+      if (perm) pq.options = perm.map((i) => q.options[i]);
       return pq;
     }),
     serverNow: now()
@@ -758,9 +716,9 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   const quiz = byId(db.quizzes, body.quizId);
   if (!quiz || !quiz.published || !canSeeQuiz(user, quiz)) return send(res, 404, { error: 'Quiz not found.' });
   const allQs = db.questions[quiz.id] || [];
-  const qs = allQs.filter((q) => !q.draft); // drafts never reach students
+  const qs = allQs.filter((q) => !q.draft);
   if (!qs.length) return send(res, 400, { error: 'This quiz has no questions yet (only drafts or empty).' });
-  const tNow = now(); // availability window — e.g. Friday 8 PM to 9 PM
+  const tNow = now();
   if (quiz.opensAt && tNow < quiz.opensAt) {
     return send(res, 403, { error: 'This quiz is not open yet — it opens ' + fmtTs(quiz.opensAt) + '.' });
   }
@@ -768,26 +726,25 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
     return send(res, 403, { error: 'This quiz closed on ' + fmtTs(quiz.closesAt) + '.' });
   }
   const existing = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'in_progress');
-  if (existing) return send(res, 200, attemptPayload(existing)); // resume
+  if (existing) return send(res, 200, attemptPayload(existing));
   const waiting = db.attempts.find((a) => a.userId === user.id && a.quizId === quiz.id && a.status === 'waiting');
   if (waiting) return send(res, 200, { attempt: { id: waiting.id, status: 'waiting' }, quiz: meta(quiz), serverNow: now() });
   const myDone = db.attempts.filter((a) => a.userId === user.id && a.quizId === quiz.id && isDone(a));
   if (myDone.length) {
     return send(res, 409, { error: 'You have already completed this quiz.' });
   }
-  // synchronized start (enforced, final): before the teacher starts, entering joins the waiting room;
-  // once the quiz has started nobody else can join — no exceptions, no retakes
+
   if (quiz.startedAt) {
     return send(res, 403, { error: 'This quiz has already started — join is closed.' });
   }
   let order = qs.map((q) => q.id);
-  if (quiz.shuffle) { // Fisher–Yates shuffle — per-attempt question order
+  if (quiz.shuffle) {
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
     }
   }
-  // per-attempt option order (anti-cheat: neighbours can't copy answer positions)
+
   let optionOrder = null;
   if (quiz.shuffleOptions) {
     optionOrder = {};
@@ -802,7 +759,7 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
       }
     }
   }
-  if (!quiz.startedAt) { // waiting room — the teacher starts everyone at the same moment
+  if (!quiz.startedAt) {
     const w = {
       id: uid('a'), quizId: quiz.id, userId: user.id, startedAt: null, endsAt: null, status: 'waiting',
       answers: {}, tabSwitches: 0, questionOrder: order, optionOrder
@@ -813,7 +770,7 @@ route('POST', '/api/attempts', async ({ user, body, res }) => {
   }
   const a = {
     id: uid('a'), quizId: quiz.id, userId: user.id, startedAt: now(),
-    // the attempt also expires when the quiz window closes, whichever comes first
+
     endsAt: Math.min(now() + quiz.durationMin * 60000, quiz.closesAt || Infinity), status: 'in_progress',
     answers: {}, tabSwitches: 0, questionOrder: order, optionOrder
   };
@@ -828,14 +785,14 @@ route('GET', '/api/attempts/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
   if (!a) return send(res, 404, { error: 'Attempt not found.' });
   if (user.role !== 'teacher' && a.userId !== user.id) return send(res, 403, { error: 'Not your attempt.' });
   const quiz = byId(db.quizzes, a.quizId);
-  if (a.status === 'waiting') { // lobby poll: waiting for the teacher to start
+  if (a.status === 'waiting') {
     return send(res, 200, { attempt: { id: a.id, status: 'waiting' }, quiz: meta(quiz), serverNow: now() });
   }
   if (a.status === 'in_progress') {
     if (user.role === 'teacher') {
       return send(res, 200, { attempt: { id: a.id, status: a.status }, quiz: meta(quiz), serverNow: now() });
     }
-    if (now() > a.endsAt + GRACE_MS) { // lazy expiry
+    if (now() > a.endsAt + GRACE_MS) {
       a.status = 'expired'; a.submittedAt = a.endsAt; finishAttempt(a); saveDb();
     } else {
       return send(res, 200, attemptPayload(a));
@@ -864,7 +821,7 @@ route('POST', '/api/attempts/([A-Za-z0-9_]+)/answer', async ({ user, params, bod
   const q = (db.questions[a.quizId] || []).find((x) => x.id === body.questionId);
   if (!q) return send(res, 404, { error: 'Question not found.' });
   let val = body.answer;
-  // client sends positions in the (possibly shuffled) display order -> map to original indexes
+
   const perm = (a.optionOrder && a.optionOrder[q.id]) || null;
   if (perm) {
     if (q.type === 'multiple') val = Array.isArray(val) ? val.map((d) => perm[Number(d)]) : [];
@@ -895,10 +852,10 @@ route('POST', '/api/attempts/([A-Za-z0-9_]+)/submit', async ({ user, params, bod
   if (typeof body.tabSwitches === 'number') a.tabSwitches = Math.max(0, Math.round(body.tabSwitches));
   a.submittedAt = now();
   a.status = now() > a.endsAt ? 'expired' : 'submitted';
-  finishAttempt(a); // ---- instant, automated grading happens HERE ----
+  finishAttempt(a);
   notifySubmission(byId(db.quizzes, a.quizId), a, a.status === 'expired' ? 'expired' : 'submitted');
   saveDb();
-  // results are the most precious data — push them to the cloud at once, no debounce window
+
   cloudSaveNow().catch((e) => console.error('cloud: submit save failed -', e.message));
   send(res, 200, {
     attemptId: a.id, status: a.status, score: a.score, maxScore: a.maxScore,
@@ -906,7 +863,6 @@ route('POST', '/api/attempts/([A-Za-z0-9_]+)/submit', async ({ user, params, bod
   });
 });
 
-/* Tab-switch signal from the quiz runner — enforces the quiz's anti-cheat policy. */
 route('POST', '/api/attempts/([A-Za-z0-9_]+)/tabswitch', async ({ user, params, body, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   const a = db.attempts.find((x) => x.id === params[0]);
@@ -932,7 +888,7 @@ route('GET', '/api/me/attempts', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   expireStale();
   const rows = db.attempts
-    .filter((a) => a.userId === user.id && a.status !== 'waiting') // waiting holds are not results
+    .filter((a) => a.userId === user.id && a.status !== 'waiting')
     .map((a) => ({
       id: a.id, quizId: a.quizId, quizTitle: (byId(db.quizzes, a.quizId) || {}).title || '(deleted quiz)',
       status: a.status, score: a.score, maxScore: a.maxScore, percent: a.percent, passed: a.passed,
@@ -942,7 +898,6 @@ route('GET', '/api/me/attempts', async ({ user, res }) => {
   send(res, 200, { attempts: rows });
 });
 
-/* ======== MONITORING / ANALYTICS (teacher) ======== */
 route('POST', '/api/quizzes/([A-Za-z0-9_]+)/start', async ({ user, params, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   expireStale();
@@ -959,7 +914,7 @@ route('POST', '/api/quizzes/([A-Za-z0-9_]+)/start', async ({ user, params, res }
     a.startedAt = t;
     a.endsAt = Math.min(t + quiz.durationMin * 60000, quiz.closesAt || Infinity);
   }
-  quiz.startedAt = t; // the gate closes: nobody else can join
+  quiz.startedAt = t;
   saveDb();
   send(res, 200, { started: waiting.length, startedAt: t });
 });
@@ -985,7 +940,7 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/monitor', async ({ user, params, res 
     };
   }).sort((x, y) => ((x.status === 'in_progress' || x.status === 'waiting') ? 0 : 1) - ((y.status === 'in_progress' || y.status === 'waiting') ? 0 : 1) || (y.percent ?? -1) - (x.percent ?? -1));
   const done = atts.filter(isDone);
-  // only students who can actually see this quiz belong here — members of its classes, never everyone
+
   const eligible = new Set();
   for (const c of db.classes.filter((x) => quizClassIds(quiz).includes(x.id))) {
     (c.studentIds || []).forEach((id) => eligible.add(id));
@@ -1032,12 +987,10 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
   const qs = (db.questions[quiz.id] || []).filter((q) => !q.draft);
   const done = db.attempts.filter((a) => a.quizId === quiz.id && isDone(a));
 
-  // score distribution (5 bands)
   const bands = [0, 0, 0, 0, 0];
   done.forEach((a) => { bands[clamp(Math.floor(a.percent / 20), 0, 4)]++; });
   const labels = ['0–19%', '20–39%', '40–59%', '60–79%', '80–100%'];
 
-  // per-question item analysis (facility index = fraction correct)
   const items = qs.map((q, i) => {
     let correct = 0, skipped = 0;
     for (const a of done) {
@@ -1055,7 +1008,6 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
     };
   });
 
-  // leaderboard — best attempt per student
   const bestByUser = {};
   for (const a of done) {
     const b = bestByUser[a.userId];
@@ -1085,12 +1037,10 @@ route('GET', '/api/quizzes/([A-Za-z0-9_]+)/analytics', async ({ user, params, re
   });
 });
 
-/* ======== STUDENTS (teacher) ======== */
 route('GET', '/api/students', async ({ user, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });
   expireStale();
-  // a teacher only ever sees students enrolled in THEIR classes — never the whole system,
-  // and the stats cover only this teacher's own quizzes
+
   const myClasses = db.classes.filter((c) => c.teacherId === user.id);
   const myStudentIds = new Set();
   for (const c of myClasses) (c.studentIds || []).forEach((sid) => myStudentIds.add(sid));
@@ -1121,8 +1071,7 @@ route('GET', '/api/students/([A-Za-z0-9_]+)/history', async ({ user, params, res
   expireStale();
   const stu = byId(db.users, params[0]);
   if (!stu || stu.role !== 'student') return send(res, 404, { error: 'Student not found.' });
-  // a teacher may only open the history of a student enrolled in one of their classes,
-  // and sees only attempts on that teacher's own quizzes
+
   const inMyClass = db.classes.some((c) => c.teacherId === user.id && (c.studentIds || []).includes(stu.id));
   if (!inMyClass) return send(res, 404, { error: 'Student not found.' });
   const myQuizIds = new Set(db.quizzes.filter((q) => ownsQuiz(user, q)).map((q) => q.id));
@@ -1138,8 +1087,7 @@ route('GET', '/api/students/([A-Za-z0-9_]+)/history', async ({ user, params, res
   send(res, 200, { student: publicUser(stu), attempts });
 });
 
-/* ======== DATA BACKUP (teacher) ======== */
-function applyDbData(b) { // swap in a validated database (sessions handled by caller)
+function applyDbData(b) {
   db = {
     users: b.users,
     quizzes: b.quizzes,
@@ -1150,17 +1098,13 @@ function applyDbData(b) { // swap in a validated database (sessions handled by c
     courses: Array.isArray(b.courses) ? b.courses : [],
     sessions: (b.sessions && typeof b.sessions === 'object' && !Array.isArray(b.sessions)) ? b.sessions : {}
   };
-  migrateModel(); // older cloud backups predate courses — upgrade in place
+  migrateModel();
 }
 
-/* ======== NOTIFICATIONS (teacher) ======== */
 route('GET', '/api/notifications', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   expireStale();
-  // a notification stays valid only while its quiz is still visible to the recipient:
-  // students — a published quiz in a class they currently belong to;
-  // teachers — a quiz they own. Rows that no longer qualify (created before this rule,
-  // or left behind by a kick, an unpublish or a delete) are pruned for good on read.
+
   const stillValid = (n) => {
     const q = byId(db.quizzes, n.quizId);
     if (!q) return false;
@@ -1179,7 +1123,7 @@ route('GET', '/api/notifications', async ({ user, res }) => {
   const mine = db.notifications
     .filter((n) => n.userId === user.id)
     .sort((x, y) => y.createdAt - x.createdAt);
-  // group by quiz, newest activity first — multiple notifications stay sorted by quiz
+
   const seen = new Map();
   const groups = [];
   for (const n of mine) {
@@ -1216,8 +1160,6 @@ route('DELETE', '/api/notifications', async ({ user, res }) => {
   send(res, 200, { ok: true });
 });
 
-
-/* ======== PROFILE (self-service editing) ======== */
 route('PUT', '/api/auth/profile', async ({ user, body, req, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   const name = String(body.name || '').trim();
@@ -1231,7 +1173,7 @@ route('PUT', '/api/auth/profile', async ({ user, body, req, res }) => {
   }
   if (newPw && newPw.length < 6) return send(res, 400, { error: 'New password must be at least 6 characters.' });
   const emailChanged = email !== user.email;
-  // a plain rename (same email, no new password) needs no password — sensitive changes still do
+
   if ((emailChanged || newPw) && user.pass !== hashPw(curPw, user.salt)) {
     return send(res, 403, { error: 'Current password is incorrect.' });
   }
@@ -1241,7 +1183,7 @@ route('PUT', '/api/auth/profile', async ({ user, body, req, res }) => {
     const salt = crypto.randomBytes(8).toString('hex');
     user.salt = salt;
     user.pass = hashPw(newPw, salt);
-    // a password change signs out every other device; this one stays signed in
+
     const keepTok = String(req.headers['authorization'] || '').match(/^Bearer (.+)$/);
     for (const k of Object.keys(db.sessions)) {
       if (db.sessions[k].userId === user.id && (!keepTok || k !== keepTok[1])) delete db.sessions[k];
@@ -1251,7 +1193,6 @@ route('PUT', '/api/auth/profile', async ({ user, body, req, res }) => {
   send(res, 200, { user: publicUser(user), emailChanged, passwordChanged: !!newPw });
 });
 
-/* ======== CLASSES ======== */
 route('GET', '/api/classes/mine', async ({ user, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   if (!isTeacher(user)) return send(res, 403, { error: 'Teachers only.' });
@@ -1295,7 +1236,7 @@ route('POST', '/api/classes/join', async ({ user, body, res }) => {
   }
   c.studentIds = c.studentIds || [];
   c.studentIds.push(user.id);
-  // welcome alerts: quizzes already published in this class, so a late joiner misses nothing
+
   const teacher = byId(db.users, c.teacherId);
   for (const q of db.quizzes) {
     if (q.published && quizClassIds(q).includes(c.id)) {
@@ -1371,7 +1312,6 @@ route('POST', '/api/classes/([A-Za-z0-9_]+)/kick', async ({ user, params, body, 
   send(res, 200, { ok: true, memberCount: c.studentIds.length });
 });
 
-/* ======== COURSES (a course lives in one class; quizzes live in a course) ======== */
 function coursePublic(x) {
   return x && {
     id: x.id, name: x.name, classId: x.classId, createdAt: x.createdAt,
@@ -1443,38 +1383,32 @@ route('DELETE', '/api/classes/([A-Za-z0-9_]+)', async ({ user, params, res }) =>
   send(res, 200, { ok: true });
 });
 
-/* ======== CLOUD SAVE (encrypted GitHub branch) ======== */
 const CLOUD_REPO   = process.env.OQAS_CLOUD_REPO   || 'Immanuel9567/A-WEB-BASED-ONLINE-QUIZ-';
 const CLOUD_BRANCH = process.env.OQAS_CLOUD_BRANCH || 'cloud-data';
 const CLOUD_FILE   = process.env.OQAS_CLOUD_PATH   || 'cloud/db.json';
 const GH = 'https://api.github.com';
 
-/* Supabase (optional, free tier): when URL + service key are set, the encrypted
-   backup lives in a locked-down Postgres table instead of the GitHub branch.
-   Plain REST calls with the service key — no npm dependency. The payload stays
-   AES-256-GCM encrypted with the cloud passphrase before it ever leaves the server. */
 const SB_URL   = (process.env.OQAS_SUPABASE_URL || '').replace(/\/+$/, '');
 const SB_KEY   = process.env.OQAS_SUPABASE_SERVICE_KEY || '';
 const SB_TABLE = process.env.OQAS_SUPABASE_TABLE || 'cloud_state';
 const SB_ROW   = process.env.OQAS_SUPABASE_ROW || 'main';
-function sbFetch(qs) { // PostgREST call with the service key — server-side only
+function sbFetch(qs) {
   return fetch(SB_URL + '/rest/v1/' + SB_TABLE + (qs || ''), {
     headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
   });
 }
 
-function cloudConfigPaths() { // first existing wins; connect writes to all
+function cloudConfigPaths() {
   const list = [];
   if (process.env.OQAS_CLOUD_CONFIG) list.push(process.env.OQAS_CLOUD_CONFIG);
-  list.push(path.join(__dirname, 'data', 'cloud.json')); // portable default
-  list.push('/home/user/.oqas-cloud.json');              // sandbox-persistent copy
+  list.push(path.join(__dirname, 'data', 'cloud.json'));
+  list.push('/home/user/.oqas-cloud.json');
   return list;
 }
 let cloudCfg = null;
 function loadCloudCfg() {
   cloudCfg = null;
-  // Supabase mode: backed by a Postgres table, no GitHub token needed. If a GitHub
-  // token is also present it is kept only to seed Supabase once on the first boot.
+
   if (SB_URL && SB_KEY && process.env.OQAS_CLOUD_PASSPHRASE) {
     let ghToken = process.env.OQAS_CLOUD_TOKEN || '';
     if (!ghToken) {
@@ -1482,7 +1416,7 @@ function loadCloudCfg() {
         try {
           const c = JSON.parse(fs.readFileSync(p, 'utf8'));
           if (c && c.token) { ghToken = c.token; break; }
-        } catch (e) { /* keep looking */ }
+        } catch (e) {  }
       }
     }
     cloudCfg = { provider: 'supabase', passphrase: process.env.OQAS_CLOUD_PASSPHRASE, ghToken, via: 'env' };
@@ -1492,18 +1426,15 @@ function loadCloudCfg() {
     try {
       const c = JSON.parse(fs.readFileSync(p, 'utf8'));
       if (c && c.token && c.passphrase) { cloudCfg = c; cloudCfg.via = 'file'; return; }
-    } catch (e) { /* keep looking */ }
+    } catch (e) {  }
   }
-  // environment fallback — for hosts (Render, Railway, Fly…) whose disk resets on restart.
-  // Set OQAS_CLOUD_TOKEN and OQAS_CLOUD_PASSPHRASE to keep cloud save connected permanently.
+
   if (process.env.OQAS_CLOUD_TOKEN && process.env.OQAS_CLOUD_PASSPHRASE) {
     cloudCfg = { token: process.env.OQAS_CLOUD_TOKEN, passphrase: process.env.OQAS_CLOUD_PASSPHRASE, via: 'env' };
   }
 }
 loadCloudCfg();
 
-// Supabase free projects pause after a week with no API activity — one tiny
-// authenticated read every 12h keeps the project awake (no-op in GitHub mode).
 if (!SERVERLESS && cloudCfg && cloudCfg.provider === 'supabase') {
   const sbWarm = setInterval(() => {
     sbFetch('?id=eq.' + encodeURIComponent(SB_ROW) + '&select=id').catch(() => {});
@@ -1556,13 +1487,13 @@ async function ensureCloudBranch(token) {
 }
 
 async function cloudSaveNow() {
-  if (SERVERLESS) return { savedAt: now() }; // the request wrapper saves the whole state itself
+  if (SERVERLESS) return { savedAt: now() };
   if (!cloudCfg) throw new Error('Cloud storage is not connected yet.');
   if (cloudState.saving) return null;
   cloudState.saving = true;
   try {
     if (cloudCfg.provider === 'supabase') {
-      const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive restarts
+      const payload = cloudEncrypt(db, cloudCfg.passphrase);
       const w = await fetch(SB_URL + '/rest/v1/' + SB_TABLE, {
         method: 'POST',
         headers: {
@@ -1581,11 +1512,11 @@ async function cloudSaveNow() {
       return { savedAt: cloudState.lastSavedAt };
     }
     await ensureCloudBranch(cloudCfg.token);
-    const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive restarts
+    const payload = cloudEncrypt(db, cloudCfg.passphrase);
     const content = Buffer.from(JSON.stringify(payload, null, 1)).toString('base64');
     const g = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
     const body = { message: 'ClassMark cloud save ' + new Date().toISOString(), branch: CLOUD_BRANCH, content };
-    if (g.status === 200) body.sha = (await g.json()).sha; // update existing file
+    if (g.status === 200) body.sha = (await g.json()).sha;
     else if (g.status !== 404) throw new Error('GitHub read failed (HTTP ' + g.status + ')');
     const p = await ghFetch(cloudCfg.token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -1606,7 +1537,7 @@ async function cloudSaveNow() {
 }
 
 let cloudTimer = null, cloudSuppress = 0;
-function scheduleCloudSave() { // debounced auto-save after local writes
+function scheduleCloudSave() {
   if (!cloudCfg || cloudSuppress) return;
   if (cloudTimer) clearTimeout(cloudTimer);
   cloudTimer = setTimeout(() => {
@@ -1616,7 +1547,7 @@ function scheduleCloudSave() { // debounced auto-save after local writes
 }
 if (cloudTimer && cloudTimer.unref) cloudTimer.unref();
 
-async function githubFetchData(token) { // -> decrypted db object | null (nothing in cloud)
+async function githubFetchData(token) {
   await ensureCloudBranch(token);
   const g = await ghFetch(token, GH + '/repos/' + CLOUD_REPO + '/contents/' + CLOUD_FILE + '?ref=' + CLOUD_BRANCH + '&nocache=' + now());
   if (g.status === 404) return null;
@@ -1624,13 +1555,13 @@ async function githubFetchData(token) { // -> decrypted db object | null (nothin
   const j = await g.json();
   const payload = JSON.parse(Buffer.from(j.content, 'base64').toString('utf8'));
   if (!payload || payload.app !== 'OQAS' || payload.enc !== 'aes-256-gcm') return null;
-  // remember when the cloud copy was last saved so the status card is accurate on boot
+
   if (payload.savedAt && !cloudState.lastSavedAt) cloudState.lastSavedAt = payload.savedAt;
   return cloudDecrypt(payload, cloudCfg.passphrase);
 }
 
-let sbSeedPending = false; // first Supabase boot found an empty table — seed it after startup reconcile
-async function cloudFetchData() { // -> decrypted db object | null (nothing in cloud)
+let sbSeedPending = false;
+async function cloudFetchData() {
   if (!cloudCfg) return null;
   if (cloudCfg.provider === 'supabase') {
     const r = await sbFetch('?id=eq.' + encodeURIComponent(SB_ROW) + '&select=payload&limit=1');
@@ -1641,8 +1572,7 @@ async function cloudFetchData() { // -> decrypted db object | null (nothing in c
     }
     const rows = await r.json();
     if (!Array.isArray(rows) || !rows.length) {
-      // first boot after switching to Supabase: the table is still empty —
-      // seed it from the GitHub backup when one exists, otherwise start fresh
+
       sbSeedPending = true;
       if (cloudCfg.ghToken) return githubFetchData(cloudCfg.ghToken);
       return null;
@@ -1655,11 +1585,6 @@ async function cloudFetchData() { // -> decrypted db object | null (nothing in c
   return githubFetchData(cloudCfg.token);
 }
 
-/* ======== SERVERLESS STATE (Vercel + Supabase) ========
-   Each request loads the encrypted state row into `db`; each request that changed
-   anything saves it back through the sb_upsert RPC, which only lands when the row
-   version still matches what we loaded — a parallel save from another instance
-   makes it fail cleanly and the whole request is retried on fresh data. */
 async function sbLoadState() {
   const r = await sbFetch('?id=eq.' + encodeURIComponent(SB_ROW) + '&select=payload,version&limit=1');
   if (r.status !== 200) {
@@ -1676,13 +1601,13 @@ async function sbLoadState() {
     sbVersion = Number(rows[0].version) || 0;
     return false;
   }
-  // empty table — the first deploy after switching: seed once from the GitHub backup
+
   if (cloudCfg && cloudCfg.ghToken) {
     const legacy = await githubFetchData(cloudCfg.ghToken);
     if (legacy && Array.isArray(legacy.users) && legacy.users.length) {
       db = legacy;
       sbVersion = 0;
-      return true; // the wrapper should write the first Supabase row right away
+      return true;
     }
   }
   seed();
@@ -1690,8 +1615,8 @@ async function sbLoadState() {
   return false;
 }
 
-async function sbSaveState() { // -> {ok:true, version} | {ok:false} (someone saved first)
-  const payload = cloudEncrypt(db, cloudCfg.passphrase); // sessions included (encrypted) — logins survive cold starts
+async function sbSaveState() {
+  const payload = cloudEncrypt(db, cloudCfg.passphrase);
   const r = await fetch(SB_URL + '/rest/v1/rpc/sb_upsert', {
     method: 'POST',
     headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
@@ -1707,8 +1632,7 @@ async function sbSaveState() { // -> {ok:true, version} | {ok:false} (someone sa
   return out || { ok: false };
 }
 
-/* ---- Vercel adapter: this is what api/[[...path]].js exports ---- */
-function readBodyRaw(req) { // raw body string — the request can then be replayed on a save conflict
+function readBodyRaw(req) {
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (c) => {
@@ -1720,7 +1644,7 @@ function readBodyRaw(req) { // raw body string — the request can then be repla
   });
 }
 
-function SbBufferedRes(req) { // captures the response so nothing is sent before the state is safely saved
+function SbBufferedRes(req) {
   this.req = { method: req.method, url: req.url, headers: req.headers };
   this.status = 200;
   this.headers = null;
@@ -1734,7 +1658,7 @@ SbBufferedRes.prototype.flush = function (res) {
   res.end(this.body);
 };
 
-async function sbDispatch(req, res, p, u, raw) { // the same route loop the http server uses
+async function sbDispatch(req, res, p, u, raw) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
@@ -1766,14 +1690,14 @@ async function vercelHandler(req, res) {
     const raw = (req.method === 'POST' || req.method === 'PUT') ? await readBodyRaw(req) : null;
     let buf = null, saved = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      sbDirty = await sbLoadState(); // true when the loader seeded from the GitHub backup
+      sbDirty = await sbLoadState();
       buf = new SbBufferedRes(req);
       await sbDispatch(req, buf, p, u, raw);
       if (!sbDirty) break;
       const w = await sbSaveState();
       saved = !!(w && w.ok);
       if (saved) break;
-      // another instance saved first — reload fresh data and run the request again
+
     }
     if (!saved) return send(res, 503, { error: 'Database busy — please try again.' });
     return buf.flush(res);
@@ -1812,10 +1736,10 @@ route('POST', '/api/admin/cloud/connect', async ({ user, body, res }) => {
   cloudCfg = { token, passphrase };
   let wrote = 0;
   for (const p of cloudConfigPaths()) {
-    try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(cloudCfg, null, 1)); wrote++; } catch (e) { /* best effort */ }
+    try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(cloudCfg, null, 1)); wrote++; } catch (e) {  }
   }
   if (!wrote) { cloudCfg = null; return send(res, 500, { error: 'Could not write the cloud config file on this server.' }); }
-  try { await cloudSaveNow(); } catch (e) { /* connected but first save failed — surfaced via status */ }
+  try { await cloudSaveNow(); } catch (e) {  }
   send(res, 200, { ok: true, connected: true, lastSavedAt: cloudState.lastSavedAt, lastError: cloudState.lastError });
 });
 
@@ -1836,11 +1760,11 @@ route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
       typeof data.questions !== 'object' || !Array.isArray(data.attempts)) {
     return send(res, 400, { error: 'The cloud backup is not a valid ClassMark database.' });
   }
-  const keepSessions = db.sessions; // nobody gets signed out by a restore
+  const keepSessions = db.sessions;
   cloudSuppress++;
   try {
     applyDbData(data);
-    db.sessions = Object.assign({}, db.sessions, keepSessions); // backup sessions + live ones
+    db.sessions = Object.assign({}, db.sessions, keepSessions);
     for (const k of Object.keys(db.sessions)) {
       if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
     }
@@ -1849,7 +1773,7 @@ route('POST', '/api/admin/cloud/restore', async ({ user, res }) => {
   send(res, 200, { ok: true, users: db.users.length, quizzes: db.quizzes.length, attempts: db.attempts.length });
 });
 
-async function cloudStartupRestore() { // reconcile local vs cloud before serving
+async function cloudStartupRestore() {
   if (!cloudCfg) return;
   try {
   let data = null;
@@ -1862,13 +1786,12 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
   const cloudAt = data.updatedAt || 0;
   const localAt = db.updatedAt || 0;
   if (!dbSeeded && localAt > cloudAt + 1000) {
-    // local file is newer than the cloud copy (a save never landed) — keep local
+
     console.log('cloud: local data is newer - keeping it (' + db.users.length + ' users, ' + db.quizzes.length + ' quizzes)');
     return;
   }
   try {
-    // cloud wins — but rescue any local accounts the cloud copy does not have,
-    // so a registration can never be lost by a restore
+
     const ids = new Set(data.users.map((u) => u.id));
     const rescue = db.users.filter((u) => !ids.has(u.id));
     if (rescue.length) data.users = data.users.concat(rescue);
@@ -1876,7 +1799,7 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
     cloudSuppress++;
     try {
       applyDbData(data);
-      // persistent logins: keep the backup's sessions and the local ones
+
       db.sessions = Object.assign({}, db.sessions, localSessions);
       for (const k of Object.keys(db.sessions)) {
         if (!db.users.some((u) => u.id === db.sessions[k].userId)) delete db.sessions[k];
@@ -1889,8 +1812,7 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
       console.error('cloud: restore skipped -', e.message);
     }
   } finally {
-    // one-time migration: the Supabase table was empty — write its first row now,
-    // from the migrated GitHub backup or the newer local database
+
     if (sbSeedPending && cloudCfg.provider === 'supabase' && (db.users.length || db.quizzes.length)) {
       cloudSaveNow().catch((e) => console.error('cloud: supabase seed failed -', e.message));
     }
@@ -1899,8 +1821,7 @@ async function cloudStartupRestore() { // reconcile local vs cloud before servin
 
 route('GET', '/api/health', async ({ res }) => send(res, 200, { ok: true, name: 'ClassMark API', time: now() }));
 
-/* --------------------------------------------------------------- server     */
-if (!SERVERLESS && require.main === module) loadDb(); // serverless: state loads per request instead
+if (!SERVERLESS && require.main === module) loadDb();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -1922,7 +1843,7 @@ const server = http.createServer(async (req, res) => {
       if (!m) continue;
       const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : {};
       const user = getUser(req);
-      res.req = req; // for logout handler
+      res.req = req;
       return await r.handler({ req, res, params: m.slice(1), body, user, query: u.searchParams });
     }
 
@@ -1942,7 +1863,7 @@ function flushCloudAndExit() {
     if (p && p.finally) p.catch(() => {}).finally(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   } else if (cloudState.saving) {
-    // a save is already in flight — give it a moment to land
+
     setTimeout(() => process.exit(0), 3000).unref();
   } else {
     process.exit(0);
@@ -1965,10 +1886,9 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 }
 if (SERVERLESS) {
-  // Vercel: no listening server and no boot restore — every request loads and saves
-  // the database itself (see vercelHandler above).
+
 } else if (require.main === module) {
   cloudStartupRestore().catch(function () {}).finally(startListen);
 }
 
-module.exports = vercelHandler; // the function itself — so any wrapper that imports this file gets a working handler
+module.exports = vercelHandler;

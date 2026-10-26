@@ -39,7 +39,6 @@
 
       <div id="errBox" class="form-err" hidden></div>
 
-      <!-- ============ SIGN IN ============ -->
       <form id="loginForm" novalidate>
         <div class="field">
           <label for="liEmail">Email address</label>
@@ -52,7 +51,6 @@
         <button class="btn primary block" id="liBtn" type="submit">Sign in</button>
       </form>
 
-      <!-- ============ REGISTER ============ -->
       <form id="regForm" hidden novalidate>
         <div class="field">
           <label for="rgName">Full name</label>
@@ -64,8 +62,7 @@
         </div>
         <div class="field">
           <label for="rgPw">Password</label>
-          <input id="rgPw" type="password" autocomplete="new-password" placeholder="At least 6 characters">
-          <div class="hint">Passwords are stored as salted SHA-256 hashes.</div>
+          <input id="rgPw" type="password" autocomplete="new-password" placeholder="Password">
         </div>
         <div class="field">
           <label>I am a</label>
@@ -73,14 +70,10 @@
             <button type="button" id="roleStudent" class="on"></button>
             <button type="button" id="roleTeacher"></button>
           </div>
-          <div class="hint">Role selection is open in this prototype for demonstration purposes.</div>
         </div>
         <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
       </form>
     </div>
-    <p class="center small muted" style="margin-top:14px">
-      By continuing you agree to use this prototype for assessment purposes only.
-    </p>
   </div>
 </div>
 
@@ -88,8 +81,7 @@
 <script>
 (function () {
   'use strict';
-  // icon-labelled buttons (uniform pack from app.js)
-  // no seeded demo accounts — everyone registers or signs in with real credentials
+
   pwField('liPw');
   pwField('rgPw');
   document.getElementById('roleStudent').innerHTML = icon('bookOpen', 15) + ' Student';

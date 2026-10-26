@@ -68,7 +68,6 @@
 
   var a = data.attempt, quiz = data.quiz;
 
-  /* --- back button: teachers return to THIS quiz's insights, students to dashboard --- */
   var backBtn = document.getElementById('backBtn');
   if (user.role === 'teacher') {
     backBtn.href = 'insights.html?id=' + quiz.id;
@@ -82,7 +81,6 @@
   document.getElementById('rSub').textContent =
     quiz.subject + ' · candidate: ' + data.student + ' · result processed ' + fmtWhen(a.submittedAt);
 
-  /* ---- ring ---- */
   var ring = document.getElementById('ringFill');
   var color = a.passed ? '#1e8e3e' : '#d93025';
   ring.setAttribute('stroke', color);
@@ -102,7 +100,6 @@
     'Started: ' + fmtWhen(a.startedAt) + ' &nbsp;·&nbsp; Time used: <b>' + fmtDur(a.durationUsedSec) + '</b> of ' + quiz.durationMin + ' min' +
     (a.tabSwitches > 0 ? '<br><b>' + a.tabSwitches + ' tab switch' + (a.tabSwitches > 1 ? 'es' : '') + ' recorded during this attempt.</b>' : '');
 
-  /* ---- stat cards ---- */
   var correct = a.review.filter(function (r) { return r.correct; }).length;
   var skipped = a.review.filter(function (r) { return r.given === null; }).length;
   var wrong = a.review.length - correct - skipped;
@@ -110,7 +107,6 @@
     st(correct, 'Correct', true) + st(wrong, 'Incorrect') + st(skipped, 'Skipped') + st(fmtDur(a.durationUsedSec), 'Time used');
   function st(v, l, acc) { return '<div class="stat' + (acc ? ' accent' : '') + '"><div class="num">' + v + '</div><div class="lbl">' + l + '</div></div>'; }
 
-  /* ---- review list ---- */
   function answerText(q, v) {
     if (v === null || v === undefined) return '<i class="muted">No answer</i>';
     if (Array.isArray(v)) return v.map(function (i) { return LETTER(i) + '. ' + esc(q.options[i]); }).join(' &nbsp;+&nbsp; ');

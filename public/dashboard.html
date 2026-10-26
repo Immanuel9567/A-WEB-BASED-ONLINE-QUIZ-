@@ -49,7 +49,6 @@
   var quizzes = data[0].quizzes;
   var mine = data[1].attempts.filter(function (a) { return a.status !== 'in_progress' && a.status !== 'waiting'; });
 
-  /* ---- stats ------------------------------------------------------------ */
   var available = quizzes.filter(function (q) {
     return winState(q) === 'open' && (q.inProgressAttemptId || q.waitingAttemptId || (!q.attemptsUsed && q.questionCount > 0));
   });
@@ -61,7 +60,6 @@
     statCard('award', fmtPct(avg), 'My average score', '', 'accent') +
     statCard('trophy', fmtPct(best), 'My best score', '', 'mint');
 
-  /* ---- classes (join with a teacher's code) ------------------------------- */
   var clEl = document.getElementById('classesCard');
   async function loadClasses() {
     try {
@@ -72,7 +70,7 @@
       clEl.innerHTML =
         '<div class="row" style="flex-wrap:wrap;align-items:flex-start">' +
         '<div style="flex:1;min-width:240px">' +
-        (chips ? '<div class="classchips">' + chips + '</div>' : '<p class="small muted" style="margin:0">You have not joined a class yet — enter your teacher\'s code to see their class quizzes.</p>') +
+        (chips ? '<div class="classchips">' + chips + '</div>' : '<p class="small muted" style="margin:0">You have not joined a class yet.</p>') +
         '</div>' +
         '<div class="row"><input id="joinCode" type="text" placeholder="Class code" style="width:150px;text-transform:uppercase" autocomplete="off">' +
         '<button class="btn primary" id="joinBtn"></button></div>' +
@@ -92,11 +90,10 @@
   }
   loadClasses();
 
-  /* ---- quiz cards -------------------------------------------------------- */
   var qEl = document.getElementById('quizzes');
   if (!quizzes.length) {
     qEl.innerHTML = '<div class="card"><div class="empty"><div class="eico">' + icon('inbox', 34) + '</div>' +
-      'No quizzes yet — join your teacher\'s class with a class code and their quizzes will appear here.</div></div>';
+      'No quizzes yet.</div></div>';
   } else {
     qEl.innerHTML = quizzes.map(card).join('');
     $$('#quizzes [data-start]').forEach(function (btn) {
