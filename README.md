@@ -26,9 +26,10 @@ If you are upgrading from the older JSON-only version, your existing `data/db.js
 
 ### First run — no seeded accounts
 
-The system starts **completely empty** (no demo users or quizzes). Register the first
-teacher from the sign-in page — you get a class automatically with its join code — then
-create your courses and quizzes inside it, and let students register and join with the code.
+The system starts **completely empty** (no demo users or quizzes). Sign in as the
+administrator (`admin` / `admin123` — change the password after the first sign-in) and
+create teacher and student logins from the admin panel. Teachers get a class
+automatically with its join code; students join with the code. Public sign-up is closed.
 
 ---
 
@@ -206,7 +207,10 @@ restore, joining a class — also update the screen in place.
 
 | Method & path | Auth | Purpose |
 |---|---|---|
-| `POST /api/auth/register` | — | Create account (name, email, password, role) |
+| `POST /api/auth/register` | — | Closed — accounts are created by the administrator |
+| `GET /api/admin/accounts` | admin | List teacher and student accounts |
+| `POST /api/admin/users` | admin | Create a login (name, email, role, optional password) |
+| `POST /api/admin/users/:id/password` | admin | Reset an account's password |
 | `POST /api/auth/login` | — | Sign in → token |
 | `POST /api/auth/logout` | user | Invalidate session |
 | `GET /api/auth/me` | user | Current identity |
@@ -273,7 +277,7 @@ quiz-system/
     ├── css/style.css      # Material white design system, single blue accent
     ├── js/app.js          # shared helpers + uniform inline-SVG icon pack
     ├── index.html         # landing (sign-in + repo link)
-    ├── login.html         # sign in / register
+    ├── login.html         # sign in
     ├── dashboard.html     # student home (quizzes, results)
     ├── quiz.html          # timed quiz runner (autosave, tab-switch policy)
     ├── result.html        # instant result sheet + answer review

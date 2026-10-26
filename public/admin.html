@@ -19,30 +19,36 @@
     </div>
   </section>
 
-  <h2 class="sec">Approved teacher emails</h2>
+  <h2 class="sec">Create login</h2>
   <section class="card tight">
-    <form id="addForm" class="row" style="gap:10px;flex-wrap:wrap;padding:14px">
-      <input id="wlEmail" type="email" placeholder="Email address" autocomplete="off"
-             style="flex:1;min-width:220px" required>
-      <button class="btn primary" id="addBtn" type="submit"></button>
-    </form>
-    <div id="wlList"><p class="small muted skeleton" style="padding:0 14px 14px">Loading…</p></div>
-  </section>
-
-  <h2 class="sec">Teacher accounts</h2>
-  <section class="card tight">
-    <form id="createForm" class="row" style="gap:10px;flex-wrap:wrap;padding:14px">
+    <form id="createForm" class="row" style="gap:10px;flex-wrap:wrap;align-items:center;padding:14px">
+      <div class="segment" style="flex:0 0 auto">
+        <button type="button" id="roleTeacher" class="on"></button>
+        <button type="button" id="roleStudent"></button>
+      </div>
       <input id="newName" type="text" placeholder="Full name" autocomplete="off" style="flex:1;min-width:150px">
       <input id="newEmail" type="email" placeholder="Email address" autocomplete="off" style="flex:1;min-width:200px">
       <button class="btn primary" id="createBtn" type="submit"></button>
     </form>
   </section>
+
+  <h2 class="sec">Teacher accounts</h2>
   <section class="card tablecard">
     <table>
       <thead><tr>
         <th>Name</th><th>Email</th><th>Joined</th><th></th>
       </tr></thead>
       <tbody id="tRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <h2 class="sec">Student accounts</h2>
+  <section class="card tablecard">
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Email</th><th>Joined</th><th></th>
+      </tr></thead>
+      <tbody id="sRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
 </main>
@@ -56,74 +62,45 @@
     return;
   }
   navbar(user, 'admin');
-  document.getElementById('addBtn').innerHTML = icon('check', 15) + ' Approve';
+
+  var role = 'teacher';
+  document.getElementById('roleTeacher').innerHTML = icon('presentation', 15) + ' Teacher';
+  document.getElementById('roleStudent').innerHTML = icon('bookOpen', 15) + ' Student';
+  document.getElementById('roleTeacher').onclick = function () {
+    role = 'teacher';
+    this.classList.add('on');
+    document.getElementById('roleStudent').classList.remove('on');
+  };
+  document.getElementById('roleStudent').onclick = function () {
+    role = 'student';
+    this.classList.add('on');
+    document.getElementById('roleTeacher').classList.remove('on');
+  };
   document.getElementById('createBtn').innerHTML = icon('plus', 15) + ' Create login';
 
   var sub = document.getElementById('sub');
-  var wlList = document.getElementById('wlList');
   var tRows = document.getElementById('tRows');
-  var emailInput = document.getElementById('wlEmail');
+  var sRows = document.getElementById('sRows');
 
-  function rowHtml(w) {
-    return '<div class="row" style="gap:10px;align-items:center;padding:11px 14px;border-top:1px solid var(--line-soft)">' +
-      '<span class="eico" style="color:var(--faint)">' + icon('user', 16) + '</span>' +
-      '<div style="flex:1;min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.email) + '</b>' +
-      (w.addedAt ? '<span class="small muted">added ' + fmtWhen(w.addedAt) + '</span>' : '') + '</div>' +
-      '<button class="btn sm danger" data-rm="' + esc(w.email) + '">' + icon('trash', 13) + ' Remove</button>' +
-      '</div>';
+  function rowsHtml(list) {
+    if (!list.length) return '<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
+    return list.map(function (t) {
+      return '<tr><td><b>' + esc(t.name) + '</b></td><td>' + esc(t.email) + '</td>' +
+        '<td class="small muted">' + fmtWhen(t.createdAt) + '</td>' +
+        '<td><button class="btn sm" data-rp="' + esc(t.id) + '">' + icon('refresh', 13) + ' Reset password</button></td></tr>';
+    }).join('');
   }
 
   function paint(d) {
-    sub.textContent = d.whitelist.length + ' approved · ' + d.teachers.length + ' teachers';
-    wlList.innerHTML = d.whitelist.length
-      ? d.whitelist.map(rowHtml).join('')
-      : '<p class="small muted" style="padding:0 14px 14px">No approved emails yet.</p>';
-    tRows.innerHTML = d.teachers.length
-      ? d.teachers.map(function (t) {
-          return '<tr><td><b>' + esc(t.name) + '</b></td><td>' + esc(t.email) + '</td>' +
-            '<td class="small muted">' + fmtWhen(t.createdAt) + '</td>' +
-            '<td><button class="btn sm" data-rp="' + esc(t.id) + '">' + icon('refresh', 13) + ' Reset password</button></td></tr>';
-        }).join('')
-      : '<tr><td colspan="4" class="muted">No teacher accounts yet.</td></tr>';
+    sub.textContent = d.teachers.length + ' teachers · ' + d.students.length + ' students';
+    tRows.innerHTML = rowsHtml(d.teachers);
+    sRows.innerHTML = rowsHtml(d.students);
   }
 
   async function load() {
-    try { paint(await GET('/api/admin/teachers')); }
-    catch (e) { wlList.innerHTML = '<p class="small muted" style="padding:0 14px 14px">' + esc(e.message) + '</p>'; }
+    try { paint(await GET('/api/admin/accounts')); }
+    catch (e) { tRows.innerHTML = '<tr><td colspan="4" class="muted">' + esc(e.message) + '</td></tr>'; }
   }
-
-  document.getElementById('addForm').onsubmit = async function (e) {
-    e.preventDefault();
-    var email = emailInput.value.trim();
-    if (!email) return;
-    try {
-      await POST('/api/admin/teachers', { email: email });
-      toast('Approved ' + email.toLowerCase());
-      emailInput.value = '';
-      load();
-    } catch (err) {
-      toast(err.message, 'bad');
-    }
-  };
-
-  wlList.addEventListener('click', async function (e) {
-    var btn = e.target.closest('[data-rm]');
-    if (!btn) return;
-    var email = btn.getAttribute('data-rm');
-    var yes = await confirmModal({
-      title: 'Remove approval',
-      body: esc(email) + ' will no longer be able to sign up as a teacher.',
-      okText: 'Remove', danger: true
-    });
-    if (!yes) return;
-    try {
-      await DEL('/api/admin/teachers/' + encodeURIComponent(email));
-      toast('Removed ' + email);
-      load();
-    } catch (err) {
-      toast(err.message, 'bad');
-    }
-  });
 
   function showCredentials(title, email, pw) {
     var ov = document.createElement('div');
@@ -147,7 +124,7 @@
     var email = document.getElementById('newEmail').value.trim();
     if (!name || !email) return;
     try {
-      var r = await POST('/api/admin/users', { name: name, email: email });
+      var r = await POST('/api/admin/users', { name: name, email: email, role: role });
       document.getElementById('newName').value = '';
       document.getElementById('newEmail').value = '';
       showCredentials('Login created', r.user.email, r.password);
@@ -157,24 +134,28 @@
     }
   };
 
-  tRows.addEventListener('click', async function (e) {
-    var btn = e.target.closest('[data-rp]');
-    if (!btn) return;
-    var row = btn.closest('tr');
-    var email = row && row.children[1] ? row.children[1].textContent : '';
-    var yes = await confirmModal({
-      title: 'Reset password',
-      body: 'A new password will be generated for ' + esc(email) + '.',
-      okText: 'Reset'
-    });
-    if (!yes) return;
-    try {
-      var r = await POST('/api/admin/users/' + btn.getAttribute('data-rp') + '/password');
-      showCredentials('Password reset', r.email, r.password);
-    } catch (err) {
-      toast(err.message, 'bad');
-    }
-  });
+  function resetHandler(e) {
+    return (async function () {
+      var btn = e.target.closest('[data-rp]');
+      if (!btn) return;
+      var row = btn.closest('tr');
+      var email = row && row.children[1] ? row.children[1].textContent : '';
+      var yes = await confirmModal({
+        title: 'Reset password',
+        body: 'A new password will be generated for ' + esc(email) + '.',
+        okText: 'Reset'
+      });
+      if (!yes) return;
+      try {
+        var r = await POST('/api/admin/users/' + btn.getAttribute('data-rp') + '/password');
+        showCredentials('Password reset', r.email, r.password);
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    })();
+  }
+  tRows.addEventListener('click', resetHandler);
+  sRows.addEventListener('click', resetHandler);
 
   load();
 })();

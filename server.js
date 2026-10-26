@@ -15,8 +15,6 @@ let sbVersion = 0;
 let sbDirty = false;
 const GRACE_MS      = 15000;
 const SESSION_TTL   = 90 * 24 * 3600 * 1000;
-const TEACHER_EMAILS = (process.env.OQAS_TEACHER_EMAILS || '')
-  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 const uid    = (p) => p + '_' + crypto.randomBytes(6).toString('hex');
 const now    = () => Date.now();
@@ -425,34 +423,8 @@ function route(method, pattern, handler) {
   routes.push({ method, re: new RegExp('^' + pattern + '$'), handler });
 }
 
-route('POST', '/api/auth/register', async ({ body, res }) => {
-  const name  = String(body.name || '').trim();
-  const email = String(body.email || '').trim().toLowerCase();
-  const pw    = String(body.password || '');
-  const role  = body.role === 'teacher' ? 'teacher' : 'student';
-  if (name.length < 2)                 return send(res, 400, { error: 'Please enter your full name.' });
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
-  if (pw.length < 6)                   return send(res, 400, { error: 'Password must be at least 6 characters.' });
-  if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
-  if (role === 'teacher' && TEACHER_EMAILS.indexOf(email) === -1 && !(db.teacherWhitelist || {})[email]) {
-    return send(res, 403, { error: 'Teacher accounts are created by the school. Ask your administrator to approve your email, then try again.' });
-  }
-  const salt = crypto.randomBytes(8).toString('hex');
-  const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: now() };
-  db.users.push(user);
-  if (role === 'teacher') {
-
-    db.classes.push({
-      id: uid('cls'), name: 'My Class', code: genClassCode(),
-      teacherId: user.id, studentIds: [], createdAt: now()
-    });
-  }
-  const token = crypto.randomBytes(24).toString('hex');
-  db.sessions[token] = { userId: user.id, createdAt: now() };
-  saveDb();
-
-  cloudSaveNow().catch((e) => console.error('cloud: register save failed -', e.message));
-  send(res, 201, { token, user: publicUser(user) });
+route('POST', '/api/auth/register', async ({ res }) => {
+  send(res, 403, { error: 'Accounts are created by the school administrator.' });
 });
 
 route('POST', '/api/auth/login', async ({ body, res }) => {
@@ -1721,36 +1693,12 @@ async function vercelHandler(req, res) {
   }
 }
 
-route('GET', '/api/admin/teachers', async ({ user, res }) => {
+route('GET', '/api/admin/accounts', async ({ user, res }) => {
   if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
-  const wl = db.teacherWhitelist || {};
   send(res, 200, {
-    whitelist: Object.keys(wl).sort().map((e) => ({ email: e, addedAt: wl[e].addedAt || null, addedBy: wl[e].addedBy || null })),
-    teachers: db.users.filter((u) => u.role === 'teacher').map(publicUser)
+    teachers: db.users.filter((u) => u.role === 'teacher').map(publicUser),
+    students: db.users.filter((u) => u.role === 'student').map(publicUser)
   });
-});
-
-route('POST', '/api/admin/teachers', async ({ user, body, res }) => {
-  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
-  const email = String(body.email || '').trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
-  if (db.users.some((u) => u.email === email && u.role === 'teacher')) return send(res, 409, { error: 'This person already has a teacher account.' });
-  if (!db.teacherWhitelist) db.teacherWhitelist = {};
-  if (db.teacherWhitelist[email]) return send(res, 409, { error: 'This email is already approved.' });
-  db.teacherWhitelist[email] = { addedAt: now(), addedBy: user.email };
-  saveDb();
-  cloudSaveNow().catch((e) => console.error('cloud: whitelist save failed -', e.message));
-  send(res, 201, { email: email });
-});
-
-route('DELETE', '/api/admin/teachers/([^/]+)', async ({ user, params, res }) => {
-  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
-  const email = String(params[0] || '').trim().toLowerCase();
-  if (!db.teacherWhitelist || !db.teacherWhitelist[email]) return send(res, 404, { error: 'This email is not on the approved list.' });
-  delete db.teacherWhitelist[email];
-  saveDb();
-  cloudSaveNow().catch((e) => console.error('cloud: whitelist save failed -', e.message));
-  send(res, 200, { email: email });
 });
 
 const PW_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -1766,14 +1714,17 @@ route('POST', '/api/admin/users', async ({ user, body, res }) => {
   const name  = String(body.name || '').trim();
   const email = String(body.email || '').trim().toLowerCase();
   const pw    = String(body.password || '').trim() || genPassword();
+  const role  = body.role === 'student' ? 'student' : 'teacher';
   if (name.length < 2) return send(res, 400, { error: 'Please enter your full name.' });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
   if (pw.length < 6) return send(res, 400, { error: 'Password must be at least 6 characters.' });
   if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
   const salt = crypto.randomBytes(8).toString('hex');
-  const u = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role: 'teacher', createdAt: now() };
+  const u = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: now() };
   db.users.push(u);
-  db.classes.push({ id: uid('cls'), name: 'My Class', code: genClassCode(), teacherId: u.id, studentIds: [], createdAt: now() });
+  if (role === 'teacher') {
+    db.classes.push({ id: uid('cls'), name: 'My Class', code: genClassCode(), teacherId: u.id, studentIds: [], createdAt: now() });
+  }
   saveDb();
   cloudSaveNow().catch((e) => console.error('cloud: user create save failed -', e.message));
   send(res, 201, { user: publicUser(u), password: pw });
@@ -1968,7 +1919,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('  ClassMark - Online Quiz & Assessment System');
   console.log('==================================================');
   console.log('  API + UI  ->  http://localhost:' + PORT);
-  console.log('  Accounts  ->  none yet - register the first teacher at /login.html');
+  console.log('  Accounts  ->  sign in as admin (admin / admin123) to create logins');
   console.log('  Cloud     ->  ' + (cloudCfg ? 'connected (' + CLOUD_BRANCH + ' branch, via ' + (cloudCfg.via || 'file') + ')' : 'not connected'));
   console.log('==================================================');
 });
