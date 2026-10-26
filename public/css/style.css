@@ -170,6 +170,7 @@ body.app.sb-min .sb-head { padding: 0 0 22px; }
 
 .topnav { position: sticky; top: 0; z-index: 40; background: rgba(255,255,255,.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
 .navrow { display: flex; align-items: center; gap: 18px; height: 64px; }
+.topnav .navrow { padding-top: 0; padding-bottom: 0; }
 .navlinks { display: flex; gap: 4px; }
 .navlinks a { padding: 8px 13px; border-radius: 9px; font-weight: 600; font-size: 14px; color: var(--ink2); }
 .navlinks a:hover { background: var(--tint); }
@@ -435,13 +436,15 @@ input[type=datetime-local]::-webkit-calendar-picker-indicator {
   cursor: pointer; opacity: .5; padding: 3px 5px; border-radius: 6px; transition: .15s;
 }
 input[type=datetime-local]::-webkit-calendar-picker-indicator:hover { opacity: .9; background: var(--tint); }
-.formrow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 620px) { .formrow { grid-template-columns: 1fr; } }
+.formrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.formrow .field { min-width: 0; }
+.formrow input, .formrow select, .formrow textarea { width: 100%; min-width: 0; }
+@media (max-width: 620px) { .formrow { grid-template-columns: minmax(0, 1fr); } }
 
 .chip.crschip { cursor: pointer; }
 .chip.crschip.on { background: var(--accent); color: #fff; }
 .chip.crschip.on .ic { color: #fff; }
-.cgrid { display: grid; grid-template-columns: 1fr; }
+.cgrid { display: grid; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1080px) {
   .create-wide .cgrid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 30px; }
   .create-wide .formrow.f3 { grid-template-columns: repeat(3, 1fr); }
