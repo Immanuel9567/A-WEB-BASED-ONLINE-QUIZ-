@@ -26,7 +26,7 @@ const clamp  = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const byId   = (arr, id) => arr.find((x) => x.id === id);
 
 function publicUser(u) {
-  return u && { id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt };
+  return u && { id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt, admin: isAdmin(u) };
 }
 function meta(q) {
   return q && {
@@ -47,7 +47,7 @@ let db;
 let dbSeeded = false;
 
 const SQL_COLLECTIONS = ['users', 'classes', 'courses', 'quizzes', 'attempts', 'notifications'];
-const SQL_MAPS = ['questions', 'sessions'];
+const SQL_MAPS = ['questions', 'sessions', 'teacherWhitelist'];
 let sql = null;
 
 function sqlOpen() {
@@ -120,7 +120,7 @@ function saveDb() {
 
 function seed() {
 
-  db = { users: [], classes: [], courses: [], quizzes: [], questions: {}, attempts: [], notifications: [], sessions: {} };
+  db = { users: [], classes: [], courses: [], quizzes: [], questions: {}, attempts: [], notifications: [], sessions: {}, teacherWhitelist: {} };
 }
 
 function loadDb() {
@@ -146,6 +146,7 @@ function loadDb() {
   if (!db.notifications) db.notifications = [];
   if (!db.classes) db.classes = [];
   if (!Array.isArray(db.courses)) db.courses = [];
+  if (!db.teacherWhitelist) db.teacherWhitelist = {};
   if (migrateModel() || imported) saveDb();
 }
 
@@ -311,6 +312,9 @@ function getUser(req) {
   return byId(db.users, s.userId) || null;
 }
 const isTeacher = (u) => !!u && u.role === 'teacher';
+const ADMIN_EMAILS = (process.env.OQAS_ADMIN_EMAILS || '')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+const isAdmin = (u) => !!u && ADMIN_EMAILS.indexOf(u.email) !== -1;
 
 function serveStatic(p, res) {
   const rel = (p === '/') ? '/index.html' : p;
@@ -426,7 +430,7 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
   if (pw.length < 6)                   return send(res, 400, { error: 'Password must be at least 6 characters.' });
   if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
-  if (role === 'teacher' && TEACHER_EMAILS.indexOf(email) === -1) {
+  if (role === 'teacher' && TEACHER_EMAILS.indexOf(email) === -1 && !(db.teacherWhitelist || {})[email]) {
     return send(res, 403, { error: 'Teacher accounts are created by the school. Ask your administrator to approve your email, then try again.' });
   }
   const salt = crypto.randomBytes(8).toString('hex');
@@ -1710,6 +1714,38 @@ async function vercelHandler(req, res) {
     try { send(res, 500, { error: 'Server error', detail: String((err && err.message) || err) }); } catch (e) {}
   }
 }
+
+route('GET', '/api/admin/teachers', async ({ user, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const wl = db.teacherWhitelist || {};
+  send(res, 200, {
+    whitelist: Object.keys(wl).sort().map((e) => ({ email: e, addedAt: wl[e].addedAt || null, addedBy: wl[e].addedBy || null })),
+    teachers: db.users.filter((u) => u.role === 'teacher').map(publicUser)
+  });
+});
+
+route('POST', '/api/admin/teachers', async ({ user, body, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
+  if (db.users.some((u) => u.email === email && u.role === 'teacher')) return send(res, 409, { error: 'This person already has a teacher account.' });
+  if (!db.teacherWhitelist) db.teacherWhitelist = {};
+  if (db.teacherWhitelist[email]) return send(res, 409, { error: 'This email is already approved.' });
+  db.teacherWhitelist[email] = { addedAt: now(), addedBy: user.email };
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: whitelist save failed -', e.message));
+  send(res, 201, { email: email });
+});
+
+route('DELETE', '/api/admin/teachers/([^/]+)', async ({ user, params, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const email = String(params[0] || '').trim().toLowerCase();
+  if (!db.teacherWhitelist || !db.teacherWhitelist[email]) return send(res, 404, { error: 'This email is not on the approved list.' });
+  delete db.teacherWhitelist[email];
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: whitelist save failed -', e.message));
+  send(res, 200, { email: email });
+});
 
 route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
   if (!isTeacher(user)) return send(res, user ? 403 : 401, { error: 'Teachers only.' });

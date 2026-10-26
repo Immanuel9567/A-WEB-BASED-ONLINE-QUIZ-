@@ -239,6 +239,7 @@
       item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
       item('results', 'results.html', 'fileText', 'My results')
     ];
+    if (user.admin) links.push(item('admin', 'admin.html', 'shield', 'Admin'));
     function bn(key, href, ic, label) {
       return '<a class="' + (active === key ? 'on' : '') + '" href="' + href + '">' + icon(ic, 19) + '<span>' + label + '</span></a>';
     }
