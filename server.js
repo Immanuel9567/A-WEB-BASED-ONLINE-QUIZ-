@@ -314,7 +314,7 @@ function getUser(req) {
 const isTeacher = (u) => !!u && u.role === 'teacher';
 const ADMIN_EMAILS = (process.env.OQAS_ADMIN_EMAILS || '')
   .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const isAdmin = (u) => !!u && ADMIN_EMAILS.indexOf(u.email) !== -1;
+const isAdmin = (u) => !!u && (ADMIN_EMAILS.length ? ADMIN_EMAILS.indexOf(u.email) !== -1 : u.role === 'teacher');
 
 function serveStatic(p, res) {
   const rel = (p === '/') ? '/index.html' : p;
