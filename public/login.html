@@ -121,7 +121,7 @@
   function afterAuth(user) {
     var next = new URLSearchParams(location.search).get('next') || '';
     var safe = /^[\w-]+\.html(\?.*)?$/.test(next) ? next : null;
-    location.href = safe || (user.role === 'teacher' ? 'teacher.html' : 'dashboard.html');
+    location.href = safe || (user.role === 'admin' ? 'admin.html' : user.role === 'teacher' ? 'teacher.html' : 'dashboard.html');
   }
 
   document.getElementById('loginForm').onsubmit = async function (e) {

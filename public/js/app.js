@@ -210,7 +210,7 @@
       throw new Error('redirecting to login');
     }
     if (role && me.user.role !== role) {
-      location.href = me.user.role === 'teacher' ? 'teacher.html' : 'dashboard.html';
+      location.href = me.user.role === 'admin' ? 'admin.html' : me.user.role === 'teacher' ? 'teacher.html' : 'dashboard.html';
       throw new Error('redirecting by role');
     }
     return me.user;
@@ -223,14 +223,17 @@
     navUser = user;
     navActive = active;
     var isTeacher = user.role === 'teacher';
-    var home = isTeacher ? 'teacher.html' : 'dashboard.html';
+    var isAdminUser = user.role === 'admin';
+    var home = isAdminUser ? 'admin.html' : (isTeacher ? 'teacher.html' : 'dashboard.html');
     var initials = user.name.trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
 
     function item(key, href, ic, label) {
       return '<a class="sb-item' + (active === key ? ' on' : '') + '" href="' + href + '">' +
         icon(ic, 18) + '<span>' + label + '</span></a>';
     }
-    var links = isTeacher ? [
+    var links = isAdminUser ? [
+      item('admin', 'admin.html', 'shield', 'Admin')
+    ] : isTeacher ? [
       item('dashboard', 'teacher.html', 'home', 'Dashboard'),
       item('classes', 'classes.html', 'bookOpen', 'My classes'),
       item('students', 'students.html', 'users', 'Students'),
@@ -239,11 +242,12 @@
       item('dashboard', 'dashboard.html', 'home', 'Dashboard'),
       item('results', 'results.html', 'fileText', 'My results')
     ];
-    if (user.admin) links.push(item('admin', 'admin.html', 'shield', 'Admin'));
     function bn(key, href, ic, label) {
       return '<a class="' + (active === key ? 'on' : '') + '" href="' + href + '">' + icon(ic, 19) + '<span>' + label + '</span></a>';
     }
-    var bottom = isTeacher ? [
+    var bottom = isAdminUser ? [
+      bn('admin', 'admin.html', 'shield', 'Admin')
+    ] : isTeacher ? [
       bn('dashboard', 'teacher.html', 'home', 'Home'),
       bn('classes', 'classes.html', 'bookOpen', 'Classes'),
       bn('students', 'students.html', 'users', 'Students'),
@@ -271,7 +275,7 @@
       '<button class="uchip" id="profileBtn" title="Edit profile">' +
       '<span class="avatar">' + esc(initials) + '</span>' +
       '<span class="utxt"><b>' + esc(user.name) + '</b>' +
-      '<span class="rolechip">' + (isTeacher ? 'Teacher' : 'Student') + '</span></span></button>' +
+      '<span class="rolechip">' + (isAdminUser ? 'Administrator' : isTeacher ? 'Teacher' : 'Student') + '</span></span></button>' +
       '<button class="logout" id="navLogout">' + icon('logout', 15) + '<span class="lbl">Log out</span></button>' +
       '</div>' +
       '</aside>' +

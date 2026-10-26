@@ -147,7 +147,7 @@ function loadDb() {
   if (!db.classes) db.classes = [];
   if (!Array.isArray(db.courses)) db.courses = [];
   if (!db.teacherWhitelist) db.teacherWhitelist = {};
-  if (migrateModel() || imported) saveDb();
+  if (ensureAdmin() || migrateModel() || imported) saveDb();
 }
 
 function migrateModel() {
@@ -312,9 +312,13 @@ function getUser(req) {
   return byId(db.users, s.userId) || null;
 }
 const isTeacher = (u) => !!u && u.role === 'teacher';
-const ADMIN_EMAILS = (process.env.OQAS_ADMIN_EMAILS || '')
-  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const isAdmin = (u) => !!u && (ADMIN_EMAILS.length ? ADMIN_EMAILS.indexOf(u.email) !== -1 : u.role === 'teacher');
+const isAdmin = (u) => !!u && u.role === 'admin';
+function ensureAdmin() {
+  if (db.users.some((u) => u.email === 'admin' || u.role === 'admin')) return false;
+  const salt = crypto.randomBytes(8).toString('hex');
+  db.users.push({ id: uid('u'), name: 'Administrator', email: 'admin', salt, pass: hashPw('admin123', salt), role: 'admin', createdAt: now() });
+  return true;
+}
 
 function serveStatic(p, res) {
   const rel = (p === '/') ? '/index.html' : p;
@@ -1606,9 +1610,10 @@ async function sbLoadState() {
     const payload = rows[0].payload;
     if (payload.app !== 'OQAS' || payload.enc !== 'aes-256-gcm') throw new Error('The Supabase row is not a ClassMark backup.');
     db = cloudDecrypt(payload, cloudCfg.passphrase);
+    const adminCreated = ensureAdmin();
     migrateModel();
     sbVersion = Number(rows[0].version) || 0;
-    return false;
+    return adminCreated;
   }
 
   if (cloudCfg && cloudCfg.ghToken) {
@@ -1620,8 +1625,9 @@ async function sbLoadState() {
     }
   }
   seed();
+  const adminCreated = ensureAdmin();
   sbVersion = 0;
-  return false;
+  return adminCreated;
 }
 
 async function sbSaveState() {
