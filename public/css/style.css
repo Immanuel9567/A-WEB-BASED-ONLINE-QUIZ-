@@ -318,7 +318,7 @@ a.stat:hover { border-color: #c3cddd; box-shadow: 0 10px 30px -14px rgba(23,35,6
 .qz-select { width: 176px; }
 
 /* quiz rows — the assessment library list */
-.quiz-list { border-top: 1px solid var(--line); }
+.quiz-list { border-top: 1px solid var(--line); container-type: inline-size; overflow-x: auto; }
 .quiz-row {
   padding: 15px 16px 15px 20px; display: grid;
   grid-template-columns: 40px minmax(150px, 1.5fr) repeat(3, .55fr) .8fr auto auto;
@@ -340,16 +340,24 @@ a.stat:hover { border-color: #c3cddd; box-shadow: 0 10px 30px -14px rgba(23,35,6
 .quiz-row .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
 .quiz-row .row-actions .btn.sm { padding: 6px 12px; font-size: 12.5px; border-radius: 8px; gap: 6px; white-space: nowrap; }
 .quiz-row .row-actions .btn .ic { flex: 0 0 auto; }
-@media (max-width: 1280px) {
+/* The quiz list responds to its OWN width — the sidebar and the classes rail can eat
+   500px+ of viewport, so viewport queries clipped the rows at ~1150px. Tiers:
+   wide: grid + labeled buttons · mid: grid + icon-only · narrow: stacked two-liner. */
+@container (min-width: 840px) and (max-width: 1179px) {
   .quiz-row .row-actions .rb-l { display: none; }
   .quiz-row .row-actions .btn.sm { padding: 6px 9px; }
 }
-@media (max-width: 900px) {
-  .quiz-row { grid-template-columns: 40px 1fr auto; grid-template-rows: auto auto; row-gap: 8px; }
-  .quiz-data { display: none; }
-  .quiz-score { grid-column: 2; }
-  .quiz-row .badge { grid-column: 3; grid-row: 1; align-self: start; }
-  .quiz-row .row-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; }
+@container (max-width: 839px) {
+  .quiz-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .quiz-symbol { flex: 0 0 auto; }
+  .quiz-title { flex: 1 1 150px; }
+  .quiz-row .badge { margin-left: auto; align-self: center; }
+  .quiz-data { flex: 0 1 auto; display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+  .quiz-data span, .quiz-score span { font-size: 9px; letter-spacing: .5px; }
+  .quiz-data strong, .quiz-score strong { margin-top: 0; }
+  .quiz-score { flex: 0 1 auto; display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+  .quiz-score .chip { margin-top: 0; margin-left: 5px; }
+  .quiz-row .row-actions { flex: 1 1 100%; justify-content: flex-start; }
 }
 
 /* class rows — right rail quick access */
