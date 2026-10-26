@@ -82,19 +82,22 @@
   var tRows = document.getElementById('tRows');
   var sRows = document.getElementById('sRows');
 
-  function rowsHtml(list) {
+  function rowsHtml(list, role) {
     if (!list.length) return '<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
     return list.map(function (t) {
       return '<tr><td><b>' + esc(t.name) + '</b></td><td>' + esc(t.email) + '</td>' +
         '<td class="small muted">' + fmtWhen(t.createdAt) + '</td>' +
-        '<td><button class="btn sm" data-rp="' + esc(t.id) + '">' + icon('refresh', 13) + ' Reset password</button></td></tr>';
+        '<td><div class="row" style="gap:6px;justify-content:flex-end;flex-wrap:wrap">' +
+        '<button class="btn sm" data-rp="' + esc(t.id) + '">' + icon('refresh', 13) + ' Reset password</button>' +
+        '<button class="btn sm danger" data-del="' + esc(t.id) + '" data-role="' + role + '">' + icon('trash', 13) + ' Delete</button>' +
+        '</div></td></tr>';
     }).join('');
   }
 
   function paint(d) {
     sub.textContent = d.teachers.length + ' teachers · ' + d.students.length + ' students';
-    tRows.innerHTML = rowsHtml(d.teachers);
-    sRows.innerHTML = rowsHtml(d.students);
+    tRows.innerHTML = rowsHtml(d.teachers, 'teacher');
+    sRows.innerHTML = rowsHtml(d.students, 'student');
   }
 
   async function load() {
@@ -154,8 +157,32 @@
       }
     })();
   }
+  function delHandler(e) {
+    return (async function () {
+      var btn = e.target.closest('[data-del]');
+      if (!btn) return;
+      var row = btn.closest('tr');
+      var email = row && row.children[1] ? row.children[1].textContent : '';
+      var isTeacher = btn.getAttribute('data-role') === 'teacher';
+      var yes = await confirmModal({
+        title: 'Delete account',
+        body: esc(email) + (isTeacher ? ' and their classes, quizzes and results will be deleted.' : ' and their results and class memberships will be deleted.'),
+        okText: 'Delete', danger: true
+      });
+      if (!yes) return;
+      try {
+        await DEL('/api/admin/users/' + btn.getAttribute('data-del'));
+        toast('Deleted ' + email);
+        load();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    })();
+  }
   tRows.addEventListener('click', resetHandler);
   sRows.addEventListener('click', resetHandler);
+  tRows.addEventListener('click', delHandler);
+  sRows.addEventListener('click', delHandler);
 
   load();
 })();

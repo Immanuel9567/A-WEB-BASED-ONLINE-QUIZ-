@@ -28,8 +28,9 @@ If you are upgrading from the older JSON-only version, your existing `data/db.js
 
 The system starts **completely empty** (no demo users or quizzes). Sign in as the
 administrator (`admin` / `admin123` — change the password after the first sign-in) and
-create teacher and student logins from the admin panel. Teachers get a class
-automatically with its join code; students join with the code. Public sign-up is closed.
+create teacher logins from the admin panel; teachers get a class automatically with
+its join code. Students either sign up themselves from the sign-in page and join with
+the code, or get logins created by the administrator.
 
 ---
 
@@ -207,10 +208,11 @@ restore, joining a class — also update the screen in place.
 
 | Method & path | Auth | Purpose |
 |---|---|---|
-| `POST /api/auth/register` | — | Closed — accounts are created by the administrator |
+| `POST /api/auth/register` | — | Student sign-up (teacher accounts come from the admin panel) |
 | `GET /api/admin/accounts` | admin | List teacher and student accounts |
 | `POST /api/admin/users` | admin | Create a login (name, email, role, optional password) |
 | `POST /api/admin/users/:id/password` | admin | Reset an account's password |
+| `DELETE /api/admin/users/:id` | admin | Delete an account (teacher: with classes, quizzes, results; student: with results and memberships) |
 | `POST /api/auth/login` | — | Sign in → token |
 | `POST /api/auth/logout` | user | Invalidate session |
 | `GET /api/auth/me` | user | Current identity |

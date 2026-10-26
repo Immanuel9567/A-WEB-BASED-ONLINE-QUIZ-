@@ -32,6 +32,11 @@
         <svg width="34" height="34" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="#1a73e8"/><path d="M30 55l14 14 26-30" stroke="#fff" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
 
+      <div class="segment" style="margin-bottom:20px">
+        <button type="button" id="tabLogin" class="on">Sign in</button>
+        <button type="button" id="tabReg">Create account</button>
+      </div>
+
       <div id="errBox" class="form-err" hidden></div>
 
       <form id="loginForm" novalidate>
@@ -46,6 +51,22 @@
         <button class="btn primary block" id="liBtn" type="submit">Sign in</button>
       </form>
 
+      <form id="regForm" hidden novalidate>
+        <div class="field">
+          <label for="rgName">Full name</label>
+          <input id="rgName" type="text" autocomplete="name" placeholder="Full name">
+        </div>
+        <div class="field">
+          <label for="rgEmail">Email address</label>
+          <input id="rgEmail" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="rgPw">Password</label>
+          <input id="rgPw" type="password" autocomplete="new-password" placeholder="Password">
+        </div>
+        <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
+      </form>
+
     </div>
   </div>
 </div>
@@ -56,6 +77,7 @@
   'use strict';
 
   pwField('liPw');
+  pwField('rgPw');
   document.getElementById('backHome').innerHTML = icon('arrowLeft', 15) + ' Back home';
 
   var errBox = document.getElementById('errBox');
@@ -65,6 +87,16 @@
     errBox.hidden = false;
   }
   function clearErr() { errBox.hidden = true; }
+
+  function switchTo(which) {
+    clearErr();
+    document.getElementById('tabLogin').classList.toggle('on', which === 'login');
+    document.getElementById('tabReg').classList.toggle('on', which === 'reg');
+    document.getElementById('loginForm').hidden = which !== 'login';
+    document.getElementById('regForm').hidden = which !== 'reg';
+  }
+  document.getElementById('tabLogin').onclick = function () { switchTo('login'); };
+  document.getElementById('tabReg').onclick = function () { switchTo('reg'); };
 
   function afterAuth(user) {
     var next = new URLSearchParams(location.search).get('next') || '';
@@ -87,6 +119,25 @@
     } catch (err) {
       showErr(err.message);
       btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  };
+
+  document.getElementById('regForm').onsubmit = async function (e) {
+    e.preventDefault();
+    clearErr();
+    var btn = document.getElementById('rgBtn');
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    try {
+      var r = await POST('/api/auth/register', {
+        name: document.getElementById('rgName').value,
+        email: document.getElementById('rgEmail').value,
+        password: document.getElementById('rgPw').value
+      });
+      setToken(r.token);
+      afterAuth(r.user);
+    } catch (err) {
+      showErr(err.message);
+      btn.disabled = false; btn.textContent = 'Create account';
     }
   };
 })();

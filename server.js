@@ -423,8 +423,25 @@ function route(method, pattern, handler) {
   routes.push({ method, re: new RegExp('^' + pattern + '$'), handler });
 }
 
-route('POST', '/api/auth/register', async ({ res }) => {
-  send(res, 403, { error: 'Accounts are created by the school administrator.' });
+route('POST', '/api/auth/register', async ({ body, res }) => {
+  if (body.role === 'teacher' || body.role === 'admin') {
+    return send(res, 403, { error: 'Teacher accounts are created by the school administrator.' });
+  }
+  const name  = String(body.name || '').trim();
+  const email = String(body.email || '').trim().toLowerCase();
+  const pw    = String(body.password || '');
+  if (name.length < 2) return send(res, 400, { error: 'Please enter your full name.' });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
+  if (pw.length < 6) return send(res, 400, { error: 'Password must be at least 6 characters.' });
+  if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
+  const salt = crypto.randomBytes(8).toString('hex');
+  const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role: 'student', createdAt: now() };
+  db.users.push(user);
+  const token = crypto.randomBytes(24).toString('hex');
+  db.sessions[token] = { userId: user.id, createdAt: now() };
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: register save failed -', e.message));
+  send(res, 201, { token, user: publicUser(user) });
 });
 
 route('POST', '/api/auth/login', async ({ body, res }) => {
@@ -1743,6 +1760,40 @@ route('POST', '/api/admin/users/([A-Za-z0-9_]+)/password', async ({ user, params
   saveDb();
   cloudSaveNow().catch((e) => console.error('cloud: password reset save failed -', e.message));
   send(res, 200, { email: u.email, password: pw });
+});
+
+route('DELETE', '/api/admin/users/([A-Za-z0-9_]+)', async ({ user, params, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const u = byId(db.users, params[0]);
+  if (!u) return send(res, 404, { error: 'Account not found.' });
+  if (u.role === 'admin') return send(res, 403, { error: 'The administrator account cannot be deleted.' });
+  let classesN = 0, quizzesN = 0, attemptsN = 0;
+  if (u.role === 'teacher') {
+    const classIds = new Set(db.classes.filter((c) => c.teacherId === u.id).map((c) => c.id));
+    const quizIds = new Set(db.quizzes.filter((q) => q.createdBy === u.id).map((q) => q.id));
+    attemptsN = db.attempts.filter((a) => quizIds.has(a.quizId)).length;
+    db.attempts = db.attempts.filter((a) => !quizIds.has(a.quizId));
+    for (const qid of quizIds) delete db.questions[qid];
+    db.notifications = db.notifications.filter((n) => n.userId !== u.id && !(n.quizId && quizIds.has(n.quizId)));
+    quizzesN = quizIds.size;
+    db.quizzes = db.quizzes.filter((q) => !quizIds.has(q.id));
+    db.courses = db.courses.filter((x) => !classIds.has(x.classId));
+    classesN = classIds.size;
+    db.classes = db.classes.filter((c) => c.teacherId !== u.id);
+  } else {
+    attemptsN = db.attempts.filter((a) => a.userId === u.id).length;
+    db.attempts = db.attempts.filter((a) => a.userId !== u.id);
+    db.notifications = db.notifications.filter((n) => n.userId !== u.id);
+    for (const c of db.classes) {
+      const i = (c.studentIds || []).indexOf(u.id);
+      if (i > -1) c.studentIds.splice(i, 1);
+    }
+  }
+  for (const k of Object.keys(db.sessions)) if (db.sessions[k].userId === u.id) delete db.sessions[k];
+  db.users = db.users.filter((x) => x.id !== u.id);
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: account delete save failed -', e.message));
+  send(res, 200, { email: u.email, classes: classesN, quizzes: quizzesN, attempts: attemptsN });
 });
 
 route('GET', '/api/admin/cloud/status', async ({ user, res }) => {
