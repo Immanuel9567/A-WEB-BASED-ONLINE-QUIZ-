@@ -237,7 +237,6 @@
       return;
     }
     list.innerHTML = rows.map(row).join('');
-    wireRows();
   }
   function row(q) {
     var st = STATUS_META[statusOf(q)];
@@ -261,50 +260,27 @@
       '<div class="quiz-data"><span>Attempts</span><strong>' + q.attemptCount + '</strong></div>' +
       '<div class="quiz-score"><span>Average</span>' + avg + '</div>' +
       '<span class="badge ' + st.badge + '">' + st.label + '</span>' +
-      '<button type="button" class="iconbtn subtle morebtn" data-more="' + esc(q.id) + '" aria-label="Quiz options">' + icon('moreH', 17) + '</button>' +
+      '<div class="row-actions">' +
+        '<a class="btn sm" href="builder.html?id=' + esc(q.id) + '" title="Questions" aria-label="Questions">' + icon('edit', 14) + '<span class="rb-l">Questions</span></a>' +
+        '<a class="btn sm" href="insights.html?id=' + esc(q.id) + '" title="Enter" aria-label="Enter">' + icon('barChart', 14) + '<span class="rb-l">Enter</span></a>' +
+        (q.published
+          ? '<a class="btn sm" href="insights.html?id=' + esc(q.id) + '" title="Monitor students" aria-label="Monitor students">' + icon('activity', 14) + '<span class="rb-l">Monitor students</span></a>'
+          : '') +
+        '<button type="button" class="btn sm" data-pub="' + esc(q.id) + '" title="' + (q.published ? 'Unpublish' : 'Publish') + '" aria-label="' + (q.published ? 'Unpublish' : 'Publish') + '">' +
+          (q.published ? icon('globe', 14) + '<span class="rb-l">Unpublish</span>' : icon('send', 14) + '<span class="rb-l">Publish</span>') + '</button>' +
+        '<button type="button" class="btn sm danger" data-del="' + esc(q.id) + '" title="Delete quiz" aria-label="Delete quiz">' + icon('trash', 14) + '<span class="rb-l">Delete quiz</span></button>' +
+      '</div>' +
       '</div>';
   }
 
-  /* per-row options menu — fixed to the body so it never clips */
-  var moreMenu = document.createElement('div');
-  moreMenu.className = 'dd-menu qz-status-menu';
-  moreMenu.hidden = true;
-  document.body.appendChild(moreMenu);
-  var moreFor = null;
-  function closeMoreMenu() { moreMenu.hidden = true; moreFor = null; }
-  document.addEventListener('click', function (e) {
-    if (!moreMenu.hidden && !moreMenu.contains(e.target) && !(e.target.closest && e.target.closest('[data-more]'))) closeMoreMenu();
-  }, true);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !moreMenu.hidden) closeMoreMenu(); });
-  document.addEventListener('scroll', function () { if (!moreMenu.hidden) closeMoreMenu(); }, true);
-  function wireRows() {
-    $$('[data-more]', list).forEach(function (b) {
-      b.onclick = function () {
-        var q = quizzes.find(function (x) { return x.id === b.getAttribute('data-more'); });
-        if (!q) return;
-        moreFor = q;
-        moreMenu.innerHTML =
-          '<a class="dd-item" href="builder.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('edit', 15) + ' Questions</span></a>' +
-          '<a class="dd-item" href="insights.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('barChart', 15) + ' Enter</span></a>' +
-          (q.published
-            ? '<a class="dd-item" href="insights.html?id=' + esc(q.id) + '"><span class="dd-txt">' + icon('activity', 15) + ' Monitor students</span></a>'
-            : '') +
-          '<button type="button" class="dd-item" data-pub="' + esc(q.id) + '"><span class="dd-txt">' +
-            (q.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish') + '</span></button>' +
-          '<button type="button" class="dd-item danger" data-del="' + esc(q.id) + '"><span class="dd-txt">' + icon('trash', 15) + ' Delete quiz</span></button>';
-        var r = b.getBoundingClientRect();
-        moreMenu.style.left = Math.max(8, Math.min(r.left - 130, window.innerWidth - 210)) + 'px';
-        moreMenu.style.top = (r.bottom + 6) + 'px';
-        moreMenu.hidden = false;
-      };
-    });
-  }
-  moreMenu.addEventListener('click', async function (e) {
+  /* per-row actions — inline buttons, no dropdown (client request). Handlers are
+     delegated on the list container, so they survive every re-render. */
+  list.addEventListener('click', async function (e) {
     var pub = e.target.closest('[data-pub]');
     var del = e.target.closest('[data-del]');
     if (pub) {
       var q = quizzes.find(function (x) { return x.id === pub.getAttribute('data-pub'); });
-      closeMoreMenu();
+      if (!q) return;
       try {
         var r = await PUT('/api/quizzes/' + q.id, { published: !q.published });
         q.published = r.quiz.published;
@@ -313,7 +289,7 @@
       } catch (err) { toast(err.message, 'bad'); }
     } else if (del) {
       var qz = quizzes.find(function (x) { return x.id === del.getAttribute('data-del'); });
-      closeMoreMenu();
+      if (!qz) return;
       var ok = await confirmModal({
         title: 'Delete "' + qz.title + '"?',
         body: 'This permanently removes the quiz, its questions and <b>' + qz.attemptCount + '</b> attempt records.',
