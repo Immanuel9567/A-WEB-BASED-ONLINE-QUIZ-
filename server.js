@@ -15,6 +15,8 @@ let sbVersion = 0;
 let sbDirty = false;
 const GRACE_MS      = 15000;
 const SESSION_TTL   = 90 * 24 * 3600 * 1000;
+const TEACHER_EMAILS = (process.env.OQAS_TEACHER_EMAILS || '')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 const uid    = (p) => p + '_' + crypto.randomBytes(6).toString('hex');
 const now    = () => Date.now();
@@ -424,6 +426,9 @@ route('POST', '/api/auth/register', async ({ body, res }) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
   if (pw.length < 6)                   return send(res, 400, { error: 'Password must be at least 6 characters.' });
   if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
+  if (role === 'teacher' && TEACHER_EMAILS.indexOf(email) === -1) {
+    return send(res, 403, { error: 'Teacher accounts are created by the school. Ask your administrator to approve your email, then try again.' });
+  }
   const salt = crypto.randomBytes(8).toString('hex');
   const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role, createdAt: now() };
   db.users.push(user);
