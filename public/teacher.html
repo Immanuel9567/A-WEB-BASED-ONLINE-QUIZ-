@@ -259,9 +259,6 @@
       '<div class="row-actions">' +
         '<a class="btn sm" href="builder.html?id=' + esc(q.id) + '" title="Questions" aria-label="Questions">' + icon('edit', 14) + '<span class="rb-l">Questions</span></a>' +
         '<a class="btn sm" href="insights.html?id=' + esc(q.id) + '" title="Enter" aria-label="Enter">' + icon('barChart', 14) + '<span class="rb-l">Enter</span></a>' +
-        (q.published
-          ? '<a class="btn sm" href="insights.html?id=' + esc(q.id) + '" title="Monitor students" aria-label="Monitor students">' + icon('activity', 14) + '<span class="rb-l">Monitor students</span></a>'
-          : '') +
         '<button type="button" class="btn sm" data-pub="' + esc(q.id) + '" title="' + (q.published ? 'Unpublish' : 'Publish') + '" aria-label="' + (q.published ? 'Unpublish' : 'Publish') + '">' +
           (q.published ? icon('globe', 14) + '<span class="rb-l">Unpublish</span>' : icon('send', 14) + '<span class="rb-l">Publish</span>') + '</button>' +
         '<button type="button" class="btn sm danger" data-del="' + esc(q.id) + '" title="Delete quiz" aria-label="Delete quiz">' + icon('trash', 14) + '<span class="rb-l">Delete quiz</span></button>' +

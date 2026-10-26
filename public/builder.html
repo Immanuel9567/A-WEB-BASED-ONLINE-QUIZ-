@@ -315,7 +315,7 @@
     pubBtn.hidden = false;
     pubBtn.innerHTML = quiz.published ? icon('globe', 15) + ' Unpublish' : icon('send', 15) + ' Publish';
     monBtn.hidden = !quiz.published;
-    monBtn.innerHTML = icon('activity', 15) + ' Monitor students';
+    monBtn.innerHTML = icon('barChart', 15) + ' Enter';
     monBtn.href = 'insights.html?id=' + quizId;
   }
   pubBtn.onclick = async function () {
