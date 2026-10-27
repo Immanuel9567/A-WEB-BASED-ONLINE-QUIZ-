@@ -52,6 +52,10 @@
       </form>
 
       <form id="regForm" hidden novalidate>
+        <div class="segment" style="margin-bottom:16px">
+          <button type="button" id="rStu" class="on">Student</button>
+          <button type="button" id="rTea">Instructor</button>
+        </div>
         <div class="field">
           <label for="rgName">Full name</label>
           <input id="rgName" type="text" autocomplete="name" placeholder="Full name">
@@ -63,6 +67,10 @@
         <div class="field">
           <label for="rgPw">Password</label>
           <input id="rgPw" type="password" autocomplete="new-password" placeholder="Password">
+        </div>
+        <div class="field" id="rgStaffField" hidden>
+          <label for="rgStaff">Staff ID</label>
+          <input id="rgStaff" type="text" autocomplete="off" placeholder="Staff ID number">
         </div>
         <button class="btn primary block" id="rgBtn" type="submit">Create account</button>
       </form>
@@ -98,6 +106,17 @@
   document.getElementById('tabLogin').onclick = function () { switchTo('login'); };
   document.getElementById('tabReg').onclick = function () { switchTo('reg'); };
 
+  var regRole = 'student';
+  function setRegRole(r) {
+    regRole = r;
+    clearErr();
+    document.getElementById('rStu').classList.toggle('on', r === 'student');
+    document.getElementById('rTea').classList.toggle('on', r === 'teacher');
+    document.getElementById('rgStaffField').hidden = r !== 'teacher';
+  }
+  document.getElementById('rStu').onclick = function () { setRegRole('student'); };
+  document.getElementById('rTea').onclick = function () { setRegRole('teacher'); };
+
   function afterAuth(user) {
     var next = new URLSearchParams(location.search).get('next') || '';
     var safe = /^[\w-]+\.html(\?.*)?$/.test(next) ? next : null;
@@ -128,11 +147,16 @@
     var btn = document.getElementById('rgBtn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
-      var r = await POST('/api/auth/register', {
+      var payload = {
         name: document.getElementById('rgName').value,
         email: document.getElementById('rgEmail').value,
         password: document.getElementById('rgPw').value
-      });
+      };
+      if (regRole === 'teacher') {
+        payload.role = 'teacher';
+        payload.staffId = document.getElementById('rgStaff').value;
+      }
+      var r = await POST('/api/auth/register', payload);
       setToken(r.token);
       afterAuth(r.user);
     } catch (err) {

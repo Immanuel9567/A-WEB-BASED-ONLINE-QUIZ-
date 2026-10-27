@@ -24,7 +24,7 @@ const clamp  = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const byId   = (arr, id) => arr.find((x) => x.id === id);
 
 function publicUser(u) {
-  return u && { id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt, admin: isAdmin(u) };
+  return u && { id: u.id, name: u.name, email: u.email, role: u.role, staffId: u.staffId || null, pending: !!u.pending, createdAt: u.createdAt, admin: isAdmin(u) };
 }
 function meta(q) {
   return q && {
@@ -309,7 +309,7 @@ function getUser(req) {
   if (!s || now() - s.createdAt > SESSION_TTL) return null;
   return byId(db.users, s.userId) || null;
 }
-const isTeacher = (u) => !!u && u.role === 'teacher';
+const isTeacher = (u) => !!u && u.role === 'teacher' && !u.pending;
 const isAdmin = (u) => !!u && u.role === 'admin';
 function ensureAdmin() {
   if (db.users.some((u) => u.email === 'admin' || u.role === 'admin')) return false;
@@ -424,18 +424,23 @@ function route(method, pattern, handler) {
 }
 
 route('POST', '/api/auth/register', async ({ body, res }) => {
-  if (body.role === 'teacher' || body.role === 'admin') {
-    return send(res, 403, { error: 'Teacher accounts are created by the school administrator.' });
-  }
+  if (body.role === 'admin') return send(res, 403, { error: 'The administrator account is built in.' });
+  const teacher = body.role === 'teacher';
+  const staffId = String(body.staffId || '').trim();
   const name  = String(body.name || '').trim();
   const email = String(body.email || '').trim().toLowerCase();
   const pw    = String(body.password || '');
+  if (teacher && staffId.length < 3) return send(res, 400, { error: 'Enter your staff identification number.' });
   if (name.length < 2) return send(res, 400, { error: 'Please enter your full name.' });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: 'Please enter a valid email address.' });
   if (pw.length < 6) return send(res, 400, { error: 'Password must be at least 6 characters.' });
   if (db.users.some((u) => u.email === email)) return send(res, 409, { error: 'An account with this email already exists.' });
+  if (teacher && db.users.some((u) => u.role === 'teacher' && (u.staffId || '').toLowerCase() === staffId.toLowerCase())) {
+    return send(res, 409, { error: 'This staff ID is already in use.' });
+  }
   const salt = crypto.randomBytes(8).toString('hex');
-  const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role: 'student', createdAt: now() };
+  const user = { id: uid('u'), name, email, salt, pass: hashPw(pw, salt), role: teacher ? 'teacher' : 'student', createdAt: now() };
+  if (teacher) { user.staffId = staffId; user.pending = true; }
   db.users.push(user);
   const token = crypto.randomBytes(24).toString('hex');
   db.sessions[token] = { userId: user.id, createdAt: now() };
@@ -1229,6 +1234,7 @@ route('GET', '/api/classes', async ({ user, res }) => {
 route('POST', '/api/classes/join', async ({ user, body, res }) => {
   if (!user) return send(res, 401, { error: 'Sign in required.' });
   if (isTeacher(user)) return send(res, 403, { error: 'Only students join classes with a code.' });
+  if (user.pending) return send(res, 403, { error: 'Your account is awaiting approval.' });
   const code = String(body.code || '').trim().toUpperCase();
   if (code.length < 4) return send(res, 400, { error: 'Enter the class code from your teacher.' });
   const c = db.classes.find((x) => x.code === code);
@@ -1760,6 +1766,34 @@ route('POST', '/api/admin/users/([A-Za-z0-9_]+)/password', async ({ user, params
   saveDb();
   cloudSaveNow().catch((e) => console.error('cloud: password reset save failed -', e.message));
   send(res, 200, { email: u.email, password: pw });
+});
+
+route('POST', '/api/admin/users/([A-Za-z0-9_]+)/approve', async ({ user, params, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const target = byId(db.users, params[0]);
+  if (!target) return send(res, 404, { error: 'Account not found.' });
+  if (target.role !== 'teacher') return send(res, 400, { error: 'Not a teacher account.' });
+  if (!target.pending) return send(res, 400, { error: 'This account is already approved.' });
+  target.pending = false;
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: approve save failed -', e.message));
+  send(res, 200, { user: publicUser(target) });
+});
+
+route('POST', '/api/admin/users/([A-Za-z0-9_]+)/staffid', async ({ user, params, body, res }) => {
+  if (!isAdmin(user)) return send(res, user ? 403 : 401, { error: 'Administrators only.' });
+  const target = byId(db.users, params[0]);
+  if (!target) return send(res, 404, { error: 'Account not found.' });
+  if (target.role !== 'teacher') return send(res, 400, { error: 'Not a teacher account.' });
+  const staffId = String(body.staffId || '').trim();
+  if (staffId.length < 3) return send(res, 400, { error: 'Enter a staff identification number.' });
+  if (db.users.some((u) => u.role === 'teacher' && u.id !== target.id && (u.staffId || '').toLowerCase() === staffId.toLowerCase())) {
+    return send(res, 409, { error: 'This staff ID is already in use.' });
+  }
+  target.staffId = staffId;
+  saveDb();
+  cloudSaveNow().catch((e) => console.error('cloud: staff id save failed -', e.message));
+  send(res, 200, { user: publicUser(target) });
 });
 
 route('DELETE', '/api/admin/users/([A-Za-z0-9_]+)', async ({ user, params, res }) => {

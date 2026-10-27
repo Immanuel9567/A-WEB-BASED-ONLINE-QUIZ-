@@ -30,7 +30,10 @@ The system starts **completely empty** (no demo users or quizzes). Sign in as th
 administrator (`admin` / `admin123` — change the password after the first sign-in) and
 create teacher logins from the admin panel; teachers get a class automatically with
 its join code. Students either sign up themselves from the sign-in page and join with
-the code, or get logins created by the administrator.
+the code, or get logins created by the administrator. Instructors can also sign up
+themselves by entering their staff ID — the account stays pending (read-only
+"Awaiting approval") until the administrator verifies the staff ID and approves it,
+and the administrator can assign or change staff IDs of existing teachers at any time.
 
 ---
 
@@ -208,11 +211,13 @@ restore, joining a class — also update the screen in place.
 
 | Method & path | Auth | Purpose |
 |---|---|---|
-| `POST /api/auth/register` | — | Student sign-up (teacher accounts come from the admin panel) |
+| `POST /api/auth/register` | — | Sign-up — students directly; instructors with a staff ID (pending until the admin approves) |
 | `GET /api/admin/accounts` | admin | List teacher and student accounts |
 | `POST /api/admin/users` | admin | Create a login (name, email, role, optional password) |
 | `POST /api/admin/users/:id/password` | admin | Reset an account's password |
 | `DELETE /api/admin/users/:id` | admin | Delete an account (teacher: with classes, quizzes, results; student: with results and memberships) |
+| `POST /api/admin/users/:id/approve` | admin | Approve a pending instructor account |
+| `POST /api/admin/users/:id/staffid` | admin | Assign or change a teacher's staff ID |
 | `POST /api/auth/login` | — | Sign in → token |
 | `POST /api/auth/logout` | user | Invalidate session |
 | `GET /api/auth/me` | user | Current identity |

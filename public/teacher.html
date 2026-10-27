@@ -83,6 +83,15 @@
 (async function () {
   var user = await requireLogin('teacher');
   navbar(user, 'dashboard');
+  if (user.pending) {
+    document.querySelector('main.container').innerHTML =
+      '<section class="card" style="max-width:480px;margin:56px auto 0;text-align:center;padding:44px 28px">' +
+      icon('clock', 40) +
+      '<h2 style="margin:16px 0 8px">Awaiting approval</h2>' +
+      '<p class="muted" style="margin:0">Your staff ID will be verified by the administrator.</p>' +
+      '</section>';
+    return;
+  }
   var h = new Date().getHours();
   document.getElementById('welcome').textContent =
     h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';

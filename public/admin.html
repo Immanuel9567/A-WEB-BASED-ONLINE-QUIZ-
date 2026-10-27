@@ -36,9 +36,9 @@
   <section class="card tablecard">
     <table>
       <thead><tr>
-        <th>Name</th><th>Email</th><th>Joined</th><th></th>
+        <th>Name</th><th>Email</th><th>Staff ID</th><th>Joined</th><th></th>
       </tr></thead>
-      <tbody id="tRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+      <tbody id="tRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
     </table>
   </section>
 
@@ -83,11 +83,15 @@
   var sRows = document.getElementById('sRows');
 
   function rowsHtml(list, role) {
-    if (!list.length) return '<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
+    var tea = role === 'teacher';
+    if (!list.length) return '<tr><td colspan="' + (tea ? 5 : 4) + '" class="muted">No accounts yet.</td></tr>';
     return list.map(function (t) {
-      return '<tr><td><b>' + esc(t.name) + '</b></td><td>' + esc(t.email) + '</td>' +
+      return '<tr><td><b>' + esc(t.name) + '</b>' + (t.pending ? ' <span class="small muted">· Pending</span>' : '') + '</td><td>' + esc(t.email) + '</td>' +
+        (tea ? '<td class="mono small">' + (t.staffId ? esc(t.staffId) : '<span class="muted">—</span>') + '</td>' : '') +
         '<td class="small muted">' + fmtWhen(t.createdAt) + '</td>' +
         '<td><div class="row" style="gap:6px;justify-content:flex-end;flex-wrap:wrap">' +
+        (t.pending ? '<button class="btn sm" data-ap="' + esc(t.id) + '">' + icon('checkCircle', 13) + ' Approve</button>' : '') +
+        (tea ? '<button class="btn sm" data-sid="' + esc(t.id) + '">' + icon('idCard', 13) + ' Staff ID</button>' : '') +
         '<button class="btn sm" data-rp="' + esc(t.id) + '">' + icon('refresh', 13) + ' Reset password</button>' +
         '<button class="btn sm danger" data-del="' + esc(t.id) + '" data-role="' + role + '">' + icon('trash', 13) + ' Delete</button>' +
         '</div></td></tr>';
@@ -95,14 +99,16 @@
   }
 
   function paint(d) {
-    sub.textContent = d.teachers.length + ' teachers · ' + d.students.length + ' students';
-    tRows.innerHTML = rowsHtml(d.teachers, 'teacher');
+    var pendingN = d.teachers.filter(function (t) { return t.pending; }).length;
+    sub.textContent = d.teachers.length + ' teachers · ' + d.students.length + ' students' + (pendingN ? ' · ' + pendingN + ' pending' : '');
+    var teachers = d.teachers.slice().sort(function (a, b) { return (b.pending ? 1 : 0) - (a.pending ? 1 : 0); });
+    tRows.innerHTML = rowsHtml(teachers, 'teacher');
     sRows.innerHTML = rowsHtml(d.students, 'student');
   }
 
   async function load() {
     try { paint(await GET('/api/admin/accounts')); }
-    catch (e) { tRows.innerHTML = '<tr><td colspan="4" class="muted">' + esc(e.message) + '</td></tr>'; }
+    catch (e) { tRows.innerHTML = '<tr><td colspan="5" class="muted">' + esc(e.message) + '</td></tr>'; }
   }
 
   function showCredentials(title, email, pw) {
@@ -179,10 +185,62 @@
       }
     })();
   }
+  function approveHandler(e) {
+    return (async function () {
+      var btn = e.target.closest('[data-ap]');
+      if (!btn) return;
+      var row = btn.closest('tr');
+      var email = row && row.children[1] ? row.children[1].textContent : '';
+      try {
+        await POST('/api/admin/users/' + btn.getAttribute('data-ap') + '/approve');
+        toast('Approved ' + email);
+        load();
+      } catch (err) {
+        toast(err.message, 'bad');
+      }
+    })();
+  }
+  function staffIdHandler(e) {
+    return (async function () {
+      var btn = e.target.closest('[data-sid]');
+      if (!btn) return;
+      var row = btn.closest('tr');
+      var email = row && row.children[1] ? row.children[1].textContent : '';
+      var current = row && row.children[2] ? row.children[2].textContent.trim() : '';
+      if (current === '—') current = '';
+      var ov = document.createElement('div');
+      ov.className = 'overlay';
+      ov.innerHTML =
+        '<div class="modal"><h3>Staff ID</h3>' +
+        '<p class="muted" style="margin-bottom:10px">' + esc(email) + '</p>' +
+        '<form id="sidForm"><div class="field"><label for="sidInput">Staff ID</label>' +
+        '<input id="sidInput" type="text" autocomplete="off" placeholder="Staff ID number" value="' + esc(current) + '"></div>' +
+        '<div class="modal-actions"><button type="button" class="btn" data-x>Cancel</button>' +
+        '<button type="submit" class="btn primary" data-ok>Save</button></div></form></div>';
+      document.body.appendChild(ov);
+      var input = ov.querySelector('#sidInput');
+      input.focus();
+      ov.querySelector('[data-x]').onclick = function () { ov.remove(); };
+      ov.onclick = function (e2) { if (e2.target === ov) ov.remove(); };
+      ov.querySelector('#sidForm').onsubmit = async function (e2) {
+        e2.preventDefault();
+        try {
+          await POST('/api/admin/users/' + btn.getAttribute('data-sid') + '/staffid', { staffId: input.value });
+          ov.remove();
+          toast('Staff ID saved');
+          load();
+        } catch (err) {
+          toast(err.message, 'bad');
+        }
+      };
+    })();
+  }
   tRows.addEventListener('click', resetHandler);
   sRows.addEventListener('click', resetHandler);
   tRows.addEventListener('click', delHandler);
   sRows.addEventListener('click', delHandler);
+  tRows.addEventListener('click', approveHandler);
+  tRows.addEventListener('click', staffIdHandler);
 
   load();
 })();

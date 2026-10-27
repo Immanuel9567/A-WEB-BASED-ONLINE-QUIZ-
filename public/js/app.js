@@ -59,7 +59,8 @@
     moreH: '<circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
     arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
     arrowDown: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
-    image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'
+    image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+    idCard: '<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="2"/><path d="M5 16.5a3.5 3.5 0 0 1 7 0"/><line x1="15" y1="9" x2="19" y2="9"/><line x1="15" y1="13" x2="19" y2="13"/>'
   };
   window.icon = function (name, size) {
     var s = size || 18;
@@ -233,6 +234,8 @@
     }
     var links = isAdminUser ? [
       item('admin', 'admin.html', 'shield', 'Admin')
+    ] : (isTeacher && user.pending) ? [
+      item('dashboard', 'teacher.html', 'home', 'Dashboard')
     ] : isTeacher ? [
       item('dashboard', 'teacher.html', 'home', 'Dashboard'),
       item('classes', 'classes.html', 'bookOpen', 'My classes'),
@@ -247,6 +250,8 @@
     }
     var bottom = isAdminUser ? [
       bn('admin', 'admin.html', 'shield', 'Admin')
+    ] : (isTeacher && user.pending) ? [
+      bn('dashboard', 'teacher.html', 'home', 'Home')
     ] : isTeacher ? [
       bn('dashboard', 'teacher.html', 'home', 'Home'),
       bn('classes', 'classes.html', 'bookOpen', 'Classes'),
